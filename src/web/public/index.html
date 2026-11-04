@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architect Mission Control — Autonomous Minecraft AI</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Three.js & OrbitControls via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo-badge">AMC v2.0</div>
+      <h1>ARCHITECT MISSION CONTROL</h1>
+      <span class="subtitle">AUTONOMOUS MINECRAFT CAD & AGENTIC BUILDER</span>
+    </div>
+    <div class="header-right">
+      <div class="telemetry-pill">
+        <span class="pill-label">LLM:</span>
+        <span id="pillLlmProvider" class="pill-val">Cerebras / Groq</span>
+      </div>
+      <div class="telemetry-pill">
+        <span class="pill-label">MODE:</span>
+        <span id="pillExecMode" class="pill-val">hybrid_visual</span>
+      </div>
+      <div id="connectionStatusBadge" class="status-badge connecting">
+        <span class="status-dot"></span>
+        <span id="connectionStatusText">Verbinde WebSocket...</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="grid-container">
+    <!-- SPALTE 1: Live-Welt & 2D-Bauplatz-Planer -->
+    <section class="column col-left">
+      <div class="panel-header">
+        <div class="tab-buttons">
+          <button id="tabBtnViewer" class="tab-btn active" data-tab="tab-viewer">🎥 Live 3D Bot-Cam</button>
+          <button id="tabBtnMap" class="tab-btn" data-tab="tab-map">🗺️ 2D-Grundstücks-Raster</button>
+          <button id="tabBtnSchematics" class="tab-btn" data-tab="tab-schematics">📦 Schematics & Import</button>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <!-- TAB 1: Prismarine Viewer iframe -->
+        <div id="tab-viewer" class="tab-pane active">
+          <div class="viewer-wrapper">
+            <iframe id="viewerFrame" src="about:blank" title="Prismarine Viewer"></iframe>
+            <div class="viewer-overlay-bar">
+              <span class="live-tag">● LIVE CAM</span>
+              <button id="btnReloadViewer" class="btn-micro" title="Viewer neu laden">↺ Neu laden</button>
+            </div>
+          </div>
+          <div class="viewer-hint">
+            Prismarine-Viewer Stream auf Port <span id="lblViewerPort">3081</span>.
+          </div>
+        </div>
+
+        <!-- TAB 2: Interaktiver 2D-Grundstücks-Selektor -->
+        <div id="tab-map" class="tab-pane">
+          <div class="map-controls">
+            <div class="facing-selector">
+              <span class="control-label">Frontrichtung:</span>
+              <div class="btn-group">
+                <button class="btn-facing active" data-facing="north">N ▲</button>
+                <button class="btn-facing" data-facing="east">O ▶</button>
+                <button class="btn-facing" data-facing="south">S ▼</button>
+                <button class="btn-facing" data-facing="west">W ◀</button>
+              </div>
+            </div>
+
+            <div class="map-actions">
+              <span id="mapSimulatedNotice" class="badge-sub hidden" style="color:#f59e0b; margin-right:4px;">⚠️ Offline-Simulation</span>
+              <span id="selectionDimensions" class="selection-badge">Kein Bereich markiert</span>
+              <button id="btnApplyBuildBox" class="btn btn-primary btn-sm" disabled>Bauplatz fixieren</button>
+              <button id="btnRefreshMap" class="btn btn-secondary btn-sm" title="Karte aktualisieren">↺ Raster</button>
+            </div>
+          </div>
+
+          <div class="canvas-wrapper">
+            <canvas id="areaMapCanvas" width="480" height="480"></canvas>
+            <div id="mapTooltip" class="map-tooltip"></div>
+          </div>
+
+          <div class="map-legend">
+            <div class="legend-item"><span class="color-dot grass"></span> Gras</div>
+            <div class="legend-item"><span class="color-dot stone"></span> Stein/Wand</div>
+            <div class="legend-item"><span class="color-dot water"></span> Wasser</div>
+            <div class="legend-item"><span class="color-dot wood"></span> Holz/Erde</div>
+            <div class="legend-item"><span class="color-dot bot"></span> Bot</div>
+            <div class="legend-item legend-hint">💡 <em>Shift + Klick = Bot dorthin bewegen</em></div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Universal Schematic Importer & Library -->
+        <div id="tab-schematics" class="tab-pane">
+          <div class="schematics-pane-content">
+            <!-- Drag & Drop Zone -->
+            <div id="dropZone" class="drop-zone">
+              <div class="drop-zone-icon">📥</div>
+              <p class="drop-zone-text"><strong>Schematic-Datei hier ablegen</strong></p>
+              <span class="drop-zone-sub">(.schem, .litematic, .nbt, .schematic)</span>
+              <button id="btnBrowseFile" class="btn btn-secondary btn-sm mt-2" type="button">Datei auswählen</button>
+              <input type="file" id="fileInput" accept=".schem,.litematic,.nbt,.schematic" style="display:none">
+            </div>
+
+            <!-- URL Importer -->
+            <div class="url-importer-box">
+              <span class="control-label">Von Direkt-URL importieren:</span>
+              <div class="input-row mt-1">
+                <input type="url" id="txtSchemUrl" placeholder="https://example.com/build.schem">
+                <button id="btnImportUrl" class="btn btn-secondary btn-sm" type="button">Laden</button>
+              </div>
+            </div>
+
+            <!-- Server Region Reverse-Cloning -->
+            <div class="server-clone-box">
+              <span class="control-label">Server-Bereich in 3D-Editor klonen:</span>
+              <div class="clone-coords-grid mt-1">
+                <input type="number" id="cloneMinX" placeholder="minX" value="0">
+                <input type="number" id="cloneMinY" placeholder="minY" value="64">
+                <input type="number" id="cloneMinZ" placeholder="minZ" value="0">
+                <input type="number" id="cloneMaxX" placeholder="maxX" value="15">
+                <input type="number" id="cloneMaxY" placeholder="maxY" value="75">
+                <input type="number" id="cloneMaxZ" placeholder="maxZ" value="15">
+              </div>
+              <button id="btnCloneServerRegion" class="btn btn-primary btn-sm mt-1 w-full" type="button">
+                ⤺ Markierten Server-Bereich in 3D-Editor klonen
+              </button>
+            </div>
+
+            <!-- Lokale Schematic-Bibliothek -->
+            <div class="library-box">
+              <div class="library-header">
+                <span class="control-label">Lokale Schematics (data/schematics/):</span>
+                <button id="btnRefreshSchematics" class="btn-micro" title="Aktualisieren">↺</button>
+              </div>
+              <div id="schematicFilesList" class="schematic-files-list">
+                <span class="empty-hint">Lade Dateien...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SPALTE 2: 3D-Hologramm-Vorschau (Three.js Voxel Previewer & CAD Toolbar) -->
+    <section class="column col-center">
+      <div class="panel-header">
+        <div class="panel-title">
+          <h2>3D-HOLOGRAMM VORSCHAU</h2>
+          <span id="previewStats" class="badge-sub">Warte auf Bauplan...</span>
+        </div>
+        <div id="linterBadge" class="linter-badge idle">
+          Linter: Standby
+        </div>
+      </div>
+
+      <div class="panel-body flex-col">
+        <!-- Interaktive 3D CAD Toolbar -->
+        <div class="three-toolbar">
+          <div class="toolbar-section">
+            <span class="toolbar-label">Werkzeuge:</span>
+            <div class="btn-group">
+              <button id="toolOrbit" class="tool-btn active" title="Kamera / Orbit">🎥 Orbit</button>
+              <button id="toolSelectBox" class="tool-btn" title="3D-Bereich markieren (Selection Box)">🎯 Bereich</button>
+              <button id="toolBrush" class="tool-btn" title="Voxel-Pinsel (Setzen)">🖌️ Pinsel</button>
+              <button id="toolEraser" class="tool-btn" title="Radiergummi (Löschen)">🧹 Radierer</button>
+              <button id="toolEyedropper" class="tool-btn" title="Pipette (Block-Picker)">🧪 Pipette</button>
+            </div>
+          </div>
+
+          <div class="toolbar-section">
+            <span class="toolbar-label">Pinsel:</span>
+            <input type="text" id="txtBrushBlock" value="stone_bricks" class="brush-input" title="Blockname für Pinsel">
+          </div>
+
+          <div class="toolbar-section">
+            <span class="toolbar-label">CAD-Transform:</span>
+            <div class="btn-group">
+              <button id="btnMirrorX" class="tool-btn" title="Spiegeln X">🪞 X</button>
+              <button id="btnMirrorZ" class="tool-btn" title="Spiegeln Z">🪞 Z</button>
+              <button id="btnRotate90" class="tool-btn" title="90° Drehen">↻ 90°</button>
+              <button id="btnShiftYUp" class="tool-btn" title="Y+1 (Anheben)">▲ Y+1</button>
+              <button id="btnShiftYDown" class="tool-btn" title="Y-1 (Absenken)">▼ Y-1</button>
+            </div>
+          </div>
+
+          <div class="toolbar-section">
+            <button id="btnToggleXray" class="tool-btn btn-xray" title="Server-Terrain & Kollisionen einblenden">👁️ X-Ray</button>
+          </div>
+        </div>
+
+        <!-- 3D Canvas Container -->
+        <div id="threeContainer" class="three-container">
+          <div id="threeOverlayNotice" class="three-overlay-notice">
+            <span>✨ Gib rechts einen Bauwunsch ein oder lade links eine Schematic!</span>
+          </div>
+        </div>
+
+        <!-- Schnell-Theme-Presets Bar -->
+        <div class="theme-presets-bar">
+          <span class="control-label">Paletten-Themes:</span>
+          <div class="theme-buttons">
+            <button id="btnThemeMedieval" class="theme-btn" data-theme="medieval_spruce">🌲 Mittelalter-Fichte</button>
+            <button id="btnThemeGothic" class="theme-btn" data-theme="deepslate_gothic">🏰 Deepslate-Gotik</button>
+            <button id="btnThemeDesert" class="theme-btn" data-theme="desert_sandstone">🏜️ Wüsten-Sandstein</button>
+            <button id="btnThemeCherry" class="theme-btn" data-theme="cherry_asian">🌸 Kirschblüten-Asiatisch</button>
+          </div>
+        </div>
+
+        <!-- Slicer Slider -->
+        <div class="slicer-container">
+          <div class="slicer-header">
+            <label for="ySliceSlider">Schnitt-Höhe Y: 1 bis Max</label>
+            <span id="ySliceValue" class="slicer-val">Schnitt-Höhe Y: 1 bis Max</span>
+            <button id="btnResetSlicer" class="btn-micro">Reset</button>
+          </div>
+          <input type="range" id="ySliceSlider" min="1" max="36" value="36" class="slider" disabled>
+        </div>
+
+        <!-- Prominente Aktionsbuttons inkl. .schem Export -->
+        <div class="build-actions-bar">
+          <button id="btnConfirmBuild" class="btn btn-success btn-large" disabled>
+            🔨 In Minecraft-Welt bauen
+          </button>
+          <button id="btnExportSchem" class="btn btn-secondary">
+            💾 Als .schem exportieren
+          </button>
+          <button id="btnUndoBuild" class="btn btn-warning">
+            ↩ Letzten Bau rückgängig (!undo)
+          </button>
+          <button id="btnStopBuild" class="btn btn-danger">
+            ⛔ Not-Stopp (!stop)
+          </button>
+        </div>
+
+        <!-- Collapsible Details: Blueprint & BOM -->
+        <details class="details-accordion">
+          <summary>📋 ASCII-Bauplan & Material-Stückliste (BOM) anzeigen</summary>
+          <div class="accordion-content">
+            <div class="accordion-subgroup">
+              <div class="bom-header-row">
+                <h4>Stückliste (Bill of Materials) & Palette Swapper:</h4>
+              </div>
+              <div id="bomListContainer" class="bom-table-container">
+                <span class="empty-hint">Kein Bauplan aktiv.</span>
+              </div>
+            </div>
+            <div class="accordion-subgroup">
+              <h4>ASCII-Linter Blueprint:</h4>
+              <pre id="asciiBlueprintView" class="ascii-pre">Noch kein Bauplan synthetisiert.</pre>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- SPALTE 3: Architekten-Chat, Status & 1-Account Session Handoff -->
+    <section class="column col-right">
+      <!-- Account-Status-Leiste oben -->
+      <div class="account-handoff-card">
+        <div class="handoff-header">
+          <div class="handoff-title">1-Account Session Handoff</div>
+          <span id="handoffStateBadge" class="handoff-badge state-online">Bot Online (BaumeisterKI)</span>
+        </div>
+        <div class="handoff-body">
+          <p id="handoffStateDesc" class="handoff-desc">
+            Bot steuert den Account. Wenn du selbst joinst, pausiert er automatisch.
+          </p>
+          <button id="btnToggleHandoff" class="btn btn-handoff">
+            Account freigeben / Bot pausieren
+          </button>
+        </div>
+      </div>
+
+      <!-- Live-Fortschritt & Telemetrie -->
+      <div class="telemetry-card">
+        <div class="telemetry-grid">
+          <div class="tel-item">
+            <span class="tel-label">Position</span>
+            <span id="lblBotPos" class="tel-val">X: 0, Y: 0, Z: 0</span>
+          </div>
+          <div class="tel-item">
+            <span class="tel-label">Leben / Hunger</span>
+            <span id="lblBotVitals" class="tel-val">❤ 20 / 🍖 20</span>
+          </div>
+          <div class="tel-item">
+            <span class="tel-label">Bauphase</span>
+            <span id="lblBuildPhase" class="tel-val">Bereit</span>
+          </div>
+          <div class="tel-item">
+            <span class="tel-label">Restzeit (ca.)</span>
+            <span id="lblBuildEta" class="tel-val">-</span>
+          </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-section">
+          <div class="progress-labels">
+            <span id="lblProgressTitle">Kein aktiver Bauauftrag</span>
+            <span id="lblProgressPercent">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div id="progressBarFill" class="progress-bar-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Architekten-Chat -->
+      <div class="chat-card">
+        <div class="chat-header">
+          <h3>💬 Architekten-Dialog</h3>
+          <span class="chat-sub">Echtzeit-KI Steuerung</span>
+        </div>
+
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-msg system">
+            <span class="msg-sender">SYSTEM</span>
+            <span class="msg-text">Willkommen bei Architect Mission Control! Wähle links deinen Bauplatz oder tippe unten einen Bauwunsch ein.</span>
+          </div>
+        </div>
+
+        <!-- Prompt Quick-Chips -->
+        <div class="quick-chips">
+          <button class="chip" data-prompt="Dach steiler machen und mit Schornstein ausstatten">Dach steiler</button>
+          <button class="chip" data-prompt="Mehr Fenster, Fensterläden und Blumenkästen anbringen">Mehr Fenster</button>
+          <button class="chip" data-prompt="Einen runden Wehrturm mit Zinnen an die Ecke anbauen">Turm anbauen</button>
+          <button class="chip" data-prompt="Vollständige gemütliche Tavernen-Inneneinrichtung mit Tischen, Theke und Betten ergänzen">Inneneinrichtung</button>
+        </div>
+
+        <!-- Selection Box Notice Badge -->
+        <div id="selectionBadgeNotice" class="selection-box-badge hidden">
+          <span>🎯 Lokaler KI-Edit aktiv: <strong id="lblSelectionCoords">(0..10, 0..10, 0..10)</strong></span>
+          <button id="btnClearSelectionBox" class="btn-micro" type="button" title="Auswahl aufheben">✕</button>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="chatForm" class="chat-form">
+          <div class="auto-execute-row">
+            <label class="checkbox-container">
+              <input type="checkbox" id="chkAutoExecute">
+              <span class="checkmark"></span>
+              Sofort in Minecraft bauen (ohne Bestätigung)
+            </label>
+          </div>
+          <div class="input-row">
+            <input
+              type="text"
+              id="txtPrompt"
+              placeholder="z. B. 'Mittelalterliches Gasthaus mit Schindeldach'..."
+              autocomplete="off"
+            >
+            <button type="submit" id="btnSendPrompt" class="btn btn-primary">
+              Planen
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

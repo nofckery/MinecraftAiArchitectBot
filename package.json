@@ -1,0 +1,65 @@
+{
+  "name": "mc-architect-bot",
+  "version": "2.0.0",
+  "description": "Autonomous Low-Resource AI Minecraft Architect Bot v2.0 with Multi-Provider LLM cascade, 3D CAD Web-UI, and procedural voxel synthesis.",
+  "type": "module",
+  "main": "index.js",
+  "author": "nofckery",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nofckery/MinecraftAiArchitectBot.git"
+  },
+  "homepage": "https://github.com/nofckery/MinecraftAiArchitectBot#readme",
+  "bugs": {
+    "url": "https://github.com/nofckery/MinecraftAiArchitectBot/issues"
+  },
+  "keywords": [
+    "minecraft",
+    "mineflayer",
+    "ai",
+    "llm",
+    "architect",
+    "bot",
+    "voxel",
+    "cad",
+    "threejs",
+    "schematic",
+    "litematic",
+    "sponge-schem",
+    "cerebras",
+    "groq",
+    "mistral",
+    "codestral",
+    "gemini"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/dryRunTest.js && node test/missionControlTest.js && node test/improvementsTest.js",
+    "test:dry": "node test/dryRunTest.js",
+    "test:mission": "node test/missionControlTest.js",
+    "test:improvements": "node test/improvementsTest.js"
+  },
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "minecraft-data": "^3.75.0",
+    "minecraft-protocol": "^1.50.0",
+    "mineflayer": "^4.23.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.85.0",
+    "prismarine-block": "^1.17.1",
+    "prismarine-item": "^1.14.0",
+    "prismarine-nbt": "^2.5.0",
+    "prismarine-schematic": "^1.3.0",
+    "prismarine-viewer": "^1.33.0",
+    "rcon-client": "^4.2.5",
+    "vec3": "^0.1.10",
+    "ws": "^8.18.0"
+  }
+}

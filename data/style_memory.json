@@ -1,0 +1,50 @@
+{
+  "styles": {
+    "medieval_oak": {
+      "name": "medieval_oak",
+      "description": "Klassisches europäisches Fachwerk mit Bruchstein/Steinziegel-Sockel und weißem Lehmputz",
+      "wallPalette": "stone_bricks",
+      "pillarBlock": "oak_log[axis=y]",
+      "upperWallPalette": "white_terracotta",
+      "roofStair": "spruce_stairs",
+      "roofTrim": "stone_brick_stairs",
+      "floorPalette": "oak_planks"
+    },
+    "spruce_rustic": {
+      "name": "spruce_rustic",
+      "description": "Rustikales Gebirgs- und Taigahaus mit rauem Bruchstein und entrindetem Fichtenholz",
+      "wallPalette": "cobblestone",
+      "pillarBlock": "spruce_log[axis=y]",
+      "upperWallPalette": "stripped_spruce_log[axis=y]",
+      "roofStair": "dark_oak_stairs",
+      "roofTrim": "cobblestone_stairs",
+      "floorPalette": "spruce_planks"
+    },
+    "nordic_timber": {
+      "name": "nordic_timber",
+      "description": "Dunkler nordischer Wikinger-Stil mit Schieferfliesen und massiven Fichtenbalken",
+      "wallPalette": "deepslate_bricks",
+      "pillarBlock": "spruce_log[axis=y]",
+      "upperWallPalette": "spruce_planks",
+      "roofStair": "deepslate_tile_stairs",
+      "roofTrim": "spruce_stairs",
+      "floorPalette": "dark_oak_planks"
+    },
+    "desert_palace": {
+      "name": "desert_palace",
+      "description": "Orientalische Oasen-Architektur aus glattem Sandstein, Terrakotta und Kuppeldächern",
+      "wallPalette": "smooth_sandstone",
+      "pillarBlock": "cut_sandstone",
+      "upperWallPalette": "sandstone",
+      "roofStair": "sandstone_stairs",
+      "roofTrim": "smooth_sandstone_stairs",
+      "floorPalette": "terracotta"
+    }
+  },
+  "recentList": [
+    "medieval_oak",
+    "spruce_rustic",
+    "nordic_timber",
+    "desert_palace"
+  ]
+}
