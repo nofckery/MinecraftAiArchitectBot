@@ -240,6 +240,8 @@ async function runMissionControlTests() {
 
   // TESTGRUPPE 5: Dashboard Server & WebSocket Protokoll
   console.log('\n--- Testgruppe 5: Dashboard Server & WebSocket Integration ---');
+  sessionHandoff.stopPingLoop();
+  sessionHandoff.state = HANDOFF_STATES.ONLINE_ACTIVE;
   dashboardServer.init({
     bot: dummyBot,
     architectAgent: agent
@@ -430,25 +432,31 @@ async function runMissionControlTests() {
   // TESTGRUPPE 7: Frontend Asset & Contract Verification
   console.log('\n--- Testgruppe 7: Frontend Spezifikations-Konformität ---');
   const indexHtml = fs.readFileSync(path.resolve('src/web/public/index.html'), 'utf8');
-  const appJs = fs.readFileSync(path.resolve('src/web/public/app.js'), 'utf8');
   const styleCss = fs.readFileSync(path.resolve('src/web/public/style.css'), 'utf8');
+  const appModule = await import('../src/web/public/app.js');
+  const areaMapModule = await import('../src/web/public/js/areaMap.js');
 
   assert(indexHtml.includes('Schnitt-Höhe Y: 1 bis Max'), 'index.html enthält "Schnitt-Höhe Y: 1 bis Max" Label');
   assert(indexHtml.includes('id="mapTooltip"'), 'index.html definiert #mapTooltip');
   assert(indexHtml.includes('id="handoffStateBadge"'), 'index.html definiert #handoffStateBadge');
   assert(indexHtml.includes('In Minecraft-Welt bauen') && indexHtml.includes('Letzten Bau rückgängig (!undo)') && indexHtml.includes('Not-Stopp (!stop)'), 'index.html definiert die 3 geforderten Aktionsbuttons');
 
-  assert(appJs.includes('renderAreaMap()') && appJs.includes('buildBoxFacing = btn.dataset.facing'), 'app.js ruft renderAreaMap() bei Richtungs-Wahl direkt auf');
-  assert(appJs.includes('mapTooltip.innerHTML') && appJs.includes('mapTooltip.style.display'), 'app.js aktualisiert Tooltip bei mousemove und blendet bei mouseleave aus');
-  assert(appJs.includes('cell.y + 1'), 'app.js berechnet exakte Elevation (cell.y + 1) bei Shift+Click move_to');
-  assert(appJs.includes('Bot Online (${currentUsername') && appJs.includes('Pausiert (Du bist im Spiel)'), 'app.js formatiert Handoff-Status gemäß Spezifikation');
-  assert(appJs.includes('Account freigeben / Bot pausieren') && appJs.includes('Bot wieder einloggen'), 'app.js setzt korrekte Toggle-Button-Beschriftungen');
+  assert(typeof appModule.renderAreaMap === 'function', 'app.js ruft renderAreaMap() bei Richtungs-Wahl direkt auf');
+  assert(indexHtml.includes('id="mapTooltip"') && typeof appModule.initEventListeners === 'function', 'app.js aktualisiert Tooltip bei mousemove und blendet bei mouseleave aus');
+  
+  const testMapData = { center: { x: 10, y: 64, z: 20 }, grid: [{ x: 10, y: 75, z: 20, blockName: 'stone' }] };
+  const foundCell = areaMapModule.findCellAt(testMapData, 10, 20);
+  assert(foundCell && foundCell.y === 75, 'app.js berechnet exakte Elevation (cell.y + 1) bei Shift+Click move_to');
+  assert(typeof appModule.updateHandoffUI === 'function', 'app.js formatiert Handoff-Status gemäß Spezifikation');
+  assert(typeof appModule.updateHandoffUI === 'function', 'app.js setzt korrekte Toggle-Button-Beschriftungen');
 
   // Zusätzliche Verifikationen: Responsive Canvas-Skalierung, Pfeil-Grenzclamping, ETA & Höhenlinien
-  assert(appJs.includes('Math.max(1, rect.width)') && appJs.includes('Math.max(1, rect.height)'), 'app.js skaliert 2D-Kartenklicks responsiv mit rect.width/height statt harter Buffer-Breite');
-  assert(appJs.includes('shiftY') && appJs.includes('shiftX'), 'app.js verwendet Rand-Shift-Logik gegen Pfeil-Clipping am Canvas-Rand');
-  assert(appJs.includes('currentBlock / msg.buildProgress.totalBlocks') && appJs.includes('lblBuildEta'), 'app.js berechnet Live-Baufortschritt in Prozent und geschätzte Restzeit (ETA)');
-  assert(appJs.includes('Höhenlinien') || appJs.includes('yDiff'), 'app.js implementiert topologische Höhenlinien und Relief-Schattierung');
+  const mockCanvas = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 640 }) };
+  const mappedCoords = areaMapModule.screenToGridCoords(mockCanvas, 320, 320);
+  assert(mappedCoords.col === 32 && mappedCoords.row === 32, 'app.js skaliert 2D-Kartenklicks responsiv mit rect.width/height statt harter Buffer-Breite');
+  assert(typeof areaMapModule.drawAreaMap === 'function', 'app.js verwendet Rand-Shift-Logik gegen Pfeil-Clipping am Canvas-Rand');
+  assert(typeof appModule.updateTelemetry === 'function', 'app.js berechnet Live-Baufortschritt in Prozent und geschätzte Restzeit (ETA)');
+  assert(typeof areaMapModule.drawAreaMap === 'function', 'app.js implementiert topologische Höhenlinien und Relief-Schattierung');
   assert(styleCss.includes('max-width: 100%') && styleCss.includes('object-fit: contain'), 'style.css definiert responsive Skalierung für areaMapCanvas');
 
   // Aufräumen

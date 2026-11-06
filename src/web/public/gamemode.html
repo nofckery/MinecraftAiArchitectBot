@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architect Bot — Manual Gamemode Viewport</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #000;
+      font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+    }
+    #viewerWrapper {
+      position: absolute;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      border: none;
+      border-radius: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    #viewerFrame {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .gamemode-popout-topbar {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="viewer-wrapper gamemode-active" id="viewerWrapper">
+    <!-- Stream Iframe (allow fullscreen & pointer-lock permissions) -->
+    <iframe id="viewerFrame" src="about:blank" title="Prismarine Viewer" allow="fullscreen; pointer-lock" allowfullscreen></iframe>
+
+    <!-- Overlay Bar -->
+    <div class="viewer-overlay-bar gamemode-popout-topbar" id="viewerOverlayBar">
+      <span class="live-tag">● LIVE CAM (POPOUT)</span>
+      <button id="btnReloadViewer" class="btn-micro" title="Viewer neu laden" type="button">↺ Neu laden</button>
+      <button id="btnFullscreenViewer" class="btn-micro" title="Vollbild umschalten" type="button">⛶ Vollbild</button>
+    </div>
+
+    <!-- Gamemode HUD & Input Capture Overlay -->
+    <div id="gamemodeHudOverlay" class="gamemode-hud-overlay">
+      <!-- Transparent Fullscreen Pointer-Lock & Event Capture Layer -->
+      <div id="gamemodeInputCapture" class="gamemode-input-capture" tabindex="0"></div>
+
+      <!-- Click-To-Lock Banner -->
+      <div id="gamemodeLockBanner" class="gamemode-lock-banner">
+        <div class="lock-banner-card">
+          <span class="lock-banner-icon">🎯</span>
+          <div class="lock-banner-title">MAUSSTEUERUNG AKTIVIEREN</div>
+          <p class="lock-banner-desc">Klicke in das Fenster, um die Minecraft-Blicksteuerung mit Pointer Lock zu starten.</p>
+          <span class="lock-banner-shortcut">Tipp: <strong>[ESC]</strong> beendet den Gamemode und parkt den Bot sicher im Standby.</span>
+        </div>
+      </div>
+
+      <!-- Top HUD: Status Pill & Exit Button -->
+      <div class="gamemode-hud-top">
+        <div class="gamemode-status-pill">
+          <span class="gamemode-live-indicator">●</span>
+          <span class="gamemode-label">MANUAL COCKPIT (POPOUT)</span>
+          <span id="gamemodeCoordinates" class="gamemode-coords">X: 0.0 Y: 0.0 Z: 0.0</span>
+        </div>
+        <button id="btnExitGamemode" class="btn-gamemode-exit" title="Gamemode beenden und Fenster schließen (ESC)" type="button">✕ Beenden (ESC)</button>
+      </div>
+
+      <!-- Center HUD: Reticle & Raycast Inspection -->
+      <div class="gamemode-hud-center">
+        <!-- Central Crosshair (difference blend mode) -->
+        <div id="gamemodeCrosshair" class="gamemode-crosshair">
+          <div class="crosshair-reticle"></div>
+        </div>
+
+        <!-- Raycast Block/Entity Inspection Tooltip -->
+        <div id="gamemodeRaycastTooltip" class="gamemode-raycast-tooltip hidden">
+          <div class="raycast-header">
+            <span id="raycastTargetType" class="raycast-type">Block: minecraft:stone</span>
+            <span id="raycastTargetDistance" class="raycast-distance">3.2m</span>
+          </div>
+          <div id="raycastTargetCoords" class="raycast-coords">X: 0 Y: 0 Z: 0</div>
+        </div>
+      </div>
+
+      <!-- Bottom HUD: Vitals & 9-Slot Hotbar -->
+      <div class="gamemode-hud-bottom">
+        <!-- Vitals Bar (Health & Food) -->
+        <div class="gamemode-vitals-container">
+          <div class="vitals-half health-side" title="Gesundheit">
+            <div id="hudHeartsContainer" class="hearts-row"></div>
+            <span id="hudHealthValue" class="vitals-numeric">20 / 20</span>
+          </div>
+          <div class="vitals-half food-side" title="Hunger">
+            <span id="hudFoodValue" class="vitals-numeric">20 / 20</span>
+            <div id="hudFoodContainer" class="food-row"></div>
+          </div>
+        </div>
+
+        <!-- Selected Item Label (fades in on slot change) -->
+        <div id="hotbarSelectedItemLabel" class="hotbar-item-toast"></div>
+
+        <!-- 9-Slot Minecraft Hotbar -->
+        <div id="gamemodeHotbar" class="gamemode-hotbar" role="toolbar" aria-label="Minecraft Quickbar Hotbar">
+          <div class="hotbar-slot active" data-slot="0" id="hotbarSlot0">
+            <span class="slot-num">1</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="1" id="hotbarSlot1">
+            <span class="slot-num">2</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="2" id="hotbarSlot2">
+            <span class="slot-num">3</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="3" id="hotbarSlot3">
+            <span class="slot-num">4</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="4" id="hotbarSlot4">
+            <span class="slot-num">5</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="5" id="hotbarSlot5">
+            <span class="slot-num">6</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="6" id="hotbarSlot6">
+            <span class="slot-num">7</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="7" id="hotbarSlot7">
+            <span class="slot-num">8</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+          <div class="hotbar-slot" data-slot="8" id="hotbarSlot8">
+            <span class="slot-num">9</span>
+            <span class="slot-icon"></span>
+            <span class="slot-count"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <span id="lblViewerPort" style="display:none;">3081</span>
+
+  <script type="module">
+    import { connectWebSocket, sendWS } from './js/wsClient.js';
+    import {
+      initManualCockpit,
+      enterGamemode,
+      exitGamemode,
+      handleTelemetryUpdate,
+      handleGamemodeState
+    } from './js/manualCockpit.js';
+
+    let broadcast = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        broadcast = new BroadcastChannel('mc_gamemode_sync');
+      } catch {}
+    }
+
+    // Initialize viewer iframe source
+    const params = new URLSearchParams(window.location.search);
+    const viewerPort = params.get('port') || '3081';
+    const viewerFrame = document.getElementById('viewerFrame');
+    if (viewerFrame) {
+      viewerFrame.src = `${window.location.protocol}//${window.location.hostname}:${viewerPort}`;
+    }
+
+    // Initialize manual cockpit
+    initManualCockpit();
+
+    // Auto-enter gamemode on click inside the window
+    enterGamemode();
+
+    // Reload viewer button
+    const btnReload = document.getElementById('btnReloadViewer');
+    if (btnReload && viewerFrame) {
+      btnReload.onclick = () => {
+        viewerFrame.src = `${window.location.protocol}//${window.location.hostname}:${viewerPort}`;
+      };
+    }
+
+    // Connect WebSocket
+    connectWebSocket((msg) => {
+      if (!msg) return;
+      if (msg.type === 'bot_telemetry') {
+        handleTelemetryUpdate(msg);
+      } else if (msg.type === 'manual_control_state') {
+        handleGamemodeState(msg);
+      } else if (msg.type === 'status' && msg.viewerPort && viewerFrame) {
+        const target = `${window.location.protocol}//${window.location.hostname}:${msg.viewerPort}`;
+        if (!viewerFrame.src || viewerFrame.src === 'about:blank') {
+          viewerFrame.src = target;
+        }
+      }
+    });
+
+    // Notify opener and main window when closing
+    window.addEventListener('beforeunload', () => {
+      exitGamemode('popout_closed');
+      if (broadcast) {
+        broadcast.postMessage({ type: 'popout_closed' });
+      }
+    });
+
+    // Wire exit button to close popout window
+    const btnExit = document.getElementById('btnExitGamemode');
+    if (btnExit) {
+      btnExit.addEventListener('click', () => {
+        exitGamemode('user_exit_button');
+        if (broadcast) {
+          broadcast.postMessage({ type: 'popout_closed' });
+        }
+        setTimeout(() => window.close(), 100);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Vec3 } from 'vec3';
 import { logger } from '../utils/logger.js';
+import { atomicWriteFileSyncWithRetry } from '../utils/fileUtils.js';
 
 const DATA_DIR = path.resolve('data');
 const JOURNAL_FILE = path.join(DATA_DIR, 'undo_journal.json');
@@ -38,7 +39,7 @@ export class UndoManager {
       }
       // Behalte maximal die letzten 10 Snapshots
       const trimmed = this.snapshots.slice(-MAX_SNAPSHOTS);
-      fs.writeFileSync(JOURNAL_FILE, JSON.stringify(trimmed, null, 2), 'utf8');
+      atomicWriteFileSyncWithRetry(JOURNAL_FILE, JSON.stringify(trimmed, null, 2));
     } catch (err) {
       logger.error(`Fehler beim Speichern des Undo-Journals: ${err.message}`);
     }
@@ -99,20 +100,25 @@ export class UndoManager {
   }
 
   async executeUndo(bot, worldExecutor) {
-    const snapshot = this.popSnapshot();
-    if (!snapshot) {
+    if (this.snapshots.length === 0) {
       logger.warn('Kein Undo-Snapshot im Journal vorhanden.');
       return null;
     }
+    const snapshot = this.snapshots[this.snapshots.length - 1];
 
     logger.build(`Starte Rollback für '${snapshot.buildTitle}' (${snapshot.blockCount} Blöcke)...`);
 
     // Topologische Umkehrung: Von oben nach unten (y absteigend) zurücksetzen
     const sorted = [...snapshot.blocks].sort((a, b) => b.y - a.y);
-    await worldExecutor.executeBatch(bot, sorted, { isUndo: true });
-
-    logger.build(`Rollback für '${snapshot.buildTitle}' erfolgreich abgeschlossen!`);
-    return snapshot;
+    const success = await worldExecutor.executeBatch(bot, sorted, { isUndo: true });
+    if (success) {
+      this.popSnapshot();
+      logger.build(`Rollback für '${snapshot.buildTitle}' erfolgreich abgeschlossen!`);
+      return snapshot;
+    } else {
+      logger.warn(`Rollback für '${snapshot.buildTitle}' nicht vollständig abgeschlossen.`);
+      return null;
+    }
   }
 }
 

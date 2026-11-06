@@ -1,6 +1,45 @@
 import prismarineItem from 'prismarine-item';
 import minecraftData from 'minecraft-data';
 import { logger } from '../utils/logger.js';
+import { getPathfinderGoals } from '../utils/pathfinderHelper.js';
+import { normalizeBlockName } from '../builder/blockAliases.js';
+
+export const WEAPON_TIERS = [
+  'netherite_sword',
+  'diamond_sword',
+  'iron_sword',
+  'netherite_axe',
+  'diamond_axe',
+  'iron_axe',
+  'stone_sword',
+  'golden_sword',
+  'wooden_sword',
+  'stone_axe',
+  'golden_axe',
+  'wooden_axe'
+];
+
+export const EDIBLE_FOODS = [
+  'golden_carrot',
+  'cooked_beef',
+  'cooked_porkchop',
+  'golden_apple',
+  'cooked_mutton',
+  'cooked_salmon',
+  'cooked_chicken',
+  'baked_potato',
+  'bread',
+  'apple',
+  'carrot'
+];
+
+export const HARMFUL_FOODS = new Set([
+  'rotten_flesh',
+  'spider_eye',
+  'poisonous_potato',
+  'pufferfish',
+  'chorus_fruit'
+]);
 
 export class InventoryManager {
   constructor() {
@@ -21,7 +60,7 @@ export class InventoryManager {
     const mcData = minecraftData(version);
     const Item = this.getItemClass(version);
 
-    const cleanName = blockName.split('[')[0].replace('minecraft:', '');
+    const cleanName = normalizeBlockName(blockName);
     const itemDef = mcData.itemsByName[cleanName] || mcData.blocksByName[cleanName];
 
     if (!itemDef) {
@@ -79,8 +118,10 @@ export class InventoryManager {
         if (bot.entity && bot.entity.position.distanceTo(pos) > 4.2) {
           if (walkIfFar && bot.pathfinder) {
             try {
-              const { goals } = await import('mineflayer-pathfinder');
-              await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 2.5));
+              const goals = await getPathfinderGoals();
+              if (goals) {
+                await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 2.5));
+              }
             } catch (moveErr) {
               logger.debug(`Konnte Behälter bei ${pos} nicht anlaufen: ${moveErr.message}`);
               continue;
@@ -138,8 +179,10 @@ export class InventoryManager {
     try {
       // Wenn das beste Werkzeug im Inventar liegt, rüste es aus
       if (bot.pathfinder && bot.entity.position.distanceTo(blockPos) > 4) {
-        const { goals } = await import('mineflayer-pathfinder');
-        await bot.pathfinder.goto(new goals.GoalNear(blockPos.x, blockPos.y, blockPos.z, 2.5));
+        const goals = await getPathfinderGoals();
+        if (goals) {
+          await bot.pathfinder.goto(new goals.GoalNear(blockPos.x, blockPos.y, blockPos.z, 2.5));
+        }
       }
 
       // Bestes Werkzeug ausrüsten
@@ -193,6 +236,68 @@ export class InventoryManager {
       logger.debug(`Crafting von '${itemName}' fehlgeschlagen: ${err.message}`);
       return false;
     }
+  }
+
+  /**
+   * Rüste die beste Waffe aus dem Inventar in der Haupthand aus.
+   */
+  async equipBestWeapon(bot) {
+    if (!bot || !bot.inventory) return false;
+    const items = typeof bot.inventory.items === 'function' ? bot.inventory.items() : [];
+    for (const weaponName of WEAPON_TIERS) {
+      const match = items.find(i => i && i.name === weaponName);
+      if (match) {
+        try {
+          await bot.equip(match, 'hand');
+          return true;
+        } catch (err) {
+          logger.debug(`Konnte Waffe '${weaponName}' nicht ausrüsten: ${err.message}`);
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Rüste ein Schild aus dem Inventar in der Nebenhand aus.
+   */
+  async equipShield(bot) {
+    if (!bot || !bot.inventory) return false;
+    const items = typeof bot.inventory.items === 'function' ? bot.inventory.items() : [];
+    const shield = items.find(i => i && i.name && i.name.includes('shield'));
+    if (shield) {
+      try {
+        await bot.equip(shield, 'off-hand');
+        return true;
+      } catch (err) {
+        logger.debug(`Konnte Schild nicht in Nebenhand ausrüsten: ${err.message}`);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Wähle die beste Nahrung (hohe Sättigung, niemals schädlich) und konsumiere sie.
+   */
+  async eatBestFood(bot) {
+    if (!bot || !bot.inventory) return false;
+    const items = typeof bot.inventory.items === 'function' ? bot.inventory.items() : [];
+    for (const foodName of EDIBLE_FOODS) {
+      if (HARMFUL_FOODS.has(foodName)) continue;
+      const match = items.find(i => i && i.name === foodName);
+      if (match) {
+        try {
+          await bot.equip(match, 'hand');
+          if (typeof bot.consume === 'function') {
+            await bot.consume();
+            return true;
+          }
+        } catch (err) {
+          logger.debug(`Konnte Nahrung '${foodName}' nicht verzehren: ${err.message}`);
+        }
+      }
+    }
+    return false;
   }
 }
 

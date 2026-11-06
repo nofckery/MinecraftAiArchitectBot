@@ -14,6 +14,24 @@ export class WorldScanner {
   }
 
   static findWoolMarkers(bot, centerPos, radius = 32) {
+    if (bot && typeof bot.findBlocks === 'function') {
+      try {
+        const positions = bot.findBlocks({
+          matching: (b) => b && b.name && b.name.endsWith('_wool'),
+          maxDistance: radius,
+          count: 20
+        });
+        if (Array.isArray(positions) && positions.length > 0) {
+          return positions.map(pos => {
+            const b = bot.blockAt(pos);
+            return { x: pos.x, y: pos.y, z: pos.z, name: b ? b.name : 'white_wool' };
+          });
+        }
+      } catch {
+        // Fallback auf manuelle Schleife
+      }
+    }
+
     const markers = [];
     const minX = Math.floor(centerPos.x - radius);
     const maxX = Math.floor(centerPos.x + radius);
@@ -38,14 +56,14 @@ export class WorldScanner {
   static scanBuildSite(bot, ownerPlayer = null) {
     // 1. Spielerposition oder Bot-Position ermitteln
     let targetEntity = null;
-    if (ownerPlayer && bot.players[ownerPlayer]?.entity) {
+    if (ownerPlayer && bot?.players?.[ownerPlayer]?.entity) {
       targetEntity = bot.players[ownerPlayer].entity;
     } else {
-      targetEntity = bot.entity;
+      targetEntity = bot?.entity;
     }
 
-    const pos = targetEntity.position;
-    const facing = WorldScanner.getCardinalFacingFromYaw(targetEntity.yaw);
+    const pos = targetEntity?.position || new Vec3(0, 64, 0);
+    const facing = WorldScanner.getCardinalFacingFromYaw(targetEntity?.yaw || 0);
 
     // 2. Suche nach Wolle-Markern
     const markers = WorldScanner.findWoolMarkers(bot, pos, 24);

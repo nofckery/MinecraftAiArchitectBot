@@ -278,17 +278,20 @@ Die nachfolgende Matrix bewertet den technischen Reifegrad jeder Systemkomponent
 
 ---
 
-## 6. Funktionale Abgrenzung (Was der Bot bewusst NICHT ist)
+## 6. Funktionale Abgrenzung & Survival-Upgrade (Status: v2.1)
 
-Um falsche Erwartungshaltungen von Anwendern und Open-Source-Nutzern auf GitHub zu vermeiden, ist eine unmissverständliche funktionale Abgrenzung erforderlich:
+### Ursprüngliche Abgrenzung (v2.0)
+In Version 2.0 war der Bot als reiner Bau-Architekt konzipiert, der auf Creative-Rechte (`/setblock`, `/fill`, RCON) oder manuell befülltes Inventar angewiesen war und keine autonome Gefahrenabwehr besaß.
 
-1. **Kein generischer Survival-Companion:**
-   - Der Bot besitzt **keine Combat-KI** (kein Angriff auf Monster, kein Ausweichen vor Creepern, kein PvP-Handling).
-   - Der Bot besitzt **keine Mining- oder Baumfäll-Routinen** (kein eigenständiges Schürfen nach Rohstoffen oder Zerteilen von Erzvorkommen).
-   - Der Bot besitzt **keine Rezept- oder Crafting-Engine** (kein `bot.craft()`, keine Werkbank-Automatisierung).
-2. **Reiner autonomer Architektur-Spezialist:**
-   - Das System versteht sich als virtueller **Baumeister / Bau-Ingenieur**. Seine Aufgabe besteht darin, architektonische Visionen in statisch geprüfte, visuell ansprechende 3D-Strukturen zu überführen und diese effizient in die Spielwelt zu setzen.
-   - Auf Survival-Servern erfordert der Bot entweder einen vorher gefüllten Material-Container oder Administrator-Rechte (`/setblock`, `/fill`, RCON).
+### Survival-Upgrade (v2.1 – VOLLSTÄNDIG UMGESETZT)
+Mit Meilenstein M1–M4 wurden die Survival-Fähigkeiten für das reguläre Überlebensspiel implementiert:
+1. **Materialbeschaffung aus Kisten (`src/survival/chestManager.js`, `src/survival/materialProcurement.js`):** Autonomer 3D-Scan im 32m-Radius über 20 Behältertypen, Doppel-Kisten-Deduplizierung, Verdeckungsprüfung und kapazitätsgeprüfte Entnahme (`withdrawSafe`).
+2. **Gefahrenabwehr & Monster-FSM (`src/bot/threatManager.js`):** Automatische Bauunterbrechung (`pauseBuild`), Waffenauswahl, Schild-Abwehr gegen Skelette, Hit-and-Backpedal gegen Creeper, taktischer Rückzug bei $\le 8$ HP und Verzehr nahrhafter Lebensmittel.
+3. **Schlaf- & Reconnect-Management (`src/bot/sleepController.js`):** Registrierung von Schlafenszeiten anderer Spieler, Navigation zu freien Betten, sauberer Disconnect (`bot.quit()`) bei fehlendem Bett zur Nachtfreigabe und koordinierter Auto-Reconnect via `sessionHandoff.js`.
+4. **Vorbereitete Farming-Schnittstellen (`src/survival/harvestManager.js`):** Modulare `IHarvestManager`-Architektur für Holzfällen und Steinabbau mit Standplatz-Schutz.
+5. **Zielversion 26.3 & Kompatibilität (`src/config/versionResolver.js`):** Zero-Dependency Runtime-Polyfill für Version 26.3 (Protokoll 777) mit Auto-Detect und 1.20.4 Fallback.
+
+*Details und Konfiguration siehe [SURVIVAL_DOKUMENTATION.md](file:///d:/Minecraft%20Bot/SURVIVAL_DOKUMENTATION.md).*
 
 ---
 

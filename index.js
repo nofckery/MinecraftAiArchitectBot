@@ -1,4 +1,5 @@
 import { settings, validateSettings } from './src/config/settings.js';
+import { envManager } from './src/config/envManager.js';
 import { logger } from './src/utils/logger.js';
 import { botClient } from './src/bot/botClient.js';
 import { worldExecutor } from './src/builder/worldExecutor.js';
@@ -24,7 +25,14 @@ logger.info(`Maximales Bauvolumen: ${settings.MAX_BUILD_VOLUME_DIMENSION} Blöck
 
 // 2. Web-Dashboard & Bot-Client starten
 dashboardServer.start();
-botClient.start();
+
+if (envManager.hasEnvFile()) {
+  logger.info(`[Startup] Starte Bot-Client direkt für ${settings.MC_HOST}:${settings.MC_PORT} (User: '${settings.MC_USERNAME}', Auth: ${settings.MC_AUTH})...`);
+  botClient.start();
+} else {
+  logger.info('[Onboarding] Keine .env-Datei gefunden. Web-Dashboard bereit auf http://localhost:3080 für das Setup.');
+  logger.info('[Onboarding] Bitte öffne http://localhost:3080 im Browser, um den Einrichtungs-Assistenten abzuschließen oder den Bot direkt zu starten.');
+}
 
 // 3. Graceful Shutdown Handler
 async function gracefulShutdown(signal) {

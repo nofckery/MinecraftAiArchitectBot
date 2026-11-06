@@ -1,16 +1,18 @@
-# Autonomous Low-Resource AI Minecraft Architect Bot (v2.0 SOTA)
+# Autonomous Low-Resource AI Minecraft Architect Bot (v2.1 SOTA & Survival)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-68a063?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js Version" />
-  <img src="https://img.shields.io/badge/Minecraft-1.20.4-3d85c6?style=for-the-badge&logo=minecraft&logoColor=white" alt="Minecraft Version" />
-  <img src="https://img.shields.io/badge/Tests-187%2F187%20PASS-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Tests 187/187 PASS" />
+  <img src="https://img.shields.io/badge/Minecraft-1.20.4%20--%2026.3-3d85c6?style=for-the-badge&logo=minecraft&logoColor=white" alt="Minecraft Version" />
+  <img src="https://img.shields.io/badge/Tests-239%2F239%20PASS-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Tests 239/239 PASS" />
+  <img src="https://img.shields.io/badge/Survival-Ready%20v2.1-success?style=for-the-badge&logo=shield&logoColor=white" alt="Survival Ready" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT" />
-  <img src="https://img.shields.io/badge/Architecture-SOTA%20v2.0-orange?style=for-the-badge" alt="SOTA v2.0" />
 </p>
 
-Ein autonomer, hochperformanter **Minecraft-Architekt-Bot** in modernem Node.js (ES Modules, Node >= 20), der natürliche Sprachbefehle, Bounding-Box-Markierungen und interaktive Web-CAD-Eingaben in statisch geprüfte, ästhetisch anspruchsvolle 3D-Minecraft-Bauwerke übersetzt.
+Ein autonomer, hochperformanter **Minecraft-Architekt-Bot** in modernem Node.js (ES Modules, Node >= 20), der natürliche Sprachbefehle, Bounding-Box-Markierungen und interaktive Web-CAD-Eingaben in statisch geprüfte, ästhetisch anspruchsvolle 3D-Minecraft-Bauwerke übersetzt — **vollständig survival-fähig auf echten Minecraft-Servern (1.20.4 bis 26.3)**.
 
-Ausgestattet mit der **Referenzarchitektur für kostenlose KI-Modellendpunkte (Stand: Ende 2026)**: Nutzt hochgeschwindigkeits Wafer-Scale-Prozessoren (Cerebras @ 2.600 tok/s), Language Processing Units (Groq), dedizierte Code-Spezialisten (Mistral Codestral mit 1 Mrd. Gratis-Tokens/Monat), Google Gemini 2.5 Flash (1M Kontext), Heavy Reasoning (SambaNova, Cloudflare, NVIDIA NIM) und Zero-Key-Notfall-Gateways (Kilo AI, LLM7).
+Ausgestattet mit autonomer **Kisten- und Materialbeschaffung**, taktischer **Monster-Gefahrenabwehr** mit Schild und Waffen, automatischem **Schlaf- & Reconnect-Management** bei Nacht, **Zero-Dependency Version-Polyfill für 26.3** und der **Referenzarchitektur für kostenlose KI-Modellendpunkte (Stand: Ende 2026)**.
+
+Ausführliche Architektur- und Konfigurationsdetails zum Survival-Subsystem findest du in der [SURVIVAL_DOKUMENTATION.md](file:///d:/Minecraft%20Bot/SURVIVAL_DOKUMENTATION.md).
 
 Inklusive **Three.js 3D CAD Mission Control Web-UI** (`http://localhost:3080`), 2D-Reliefkarte, Bounding-Box-Selektor, Paletten-Swapper, 1-Account Session Handoff (Single-Account-Betrieb mit automatischer Reconnect-Schleife) und Universal-Schematic-Unterstützung (`.schem`, `.litematic`, `.nbt`, `.schematic`).
 
@@ -336,12 +338,12 @@ Befehle können direkt im Minecraft-Chat eingegeben werden (nur für autorisiert
 
 ---
 
-## 11. Testsuite & Verifikation (187/187 Tests)
+## 11. Testsuite & Verifikation (239/239 Tests)
 
-Das Projekt verfügt über eine umfassende, dreistufige Testsuite mit **187 automatisierten Tests**, die vollständig offline ohne aktive Internet- oder Server-Verbindung ausgeführt werden können:
+Das Projekt verfügt über eine umfassende, modulare Testsuite mit **239 automatisierten Tests (314 Assertions)**, die vollständig offline ohne aktive Internet- oder Server-Verbindung ausgeführt werden können:
 
 ```bash
-# Gesamte Testsuite (187 Tests):
+# Gesamte Testsuite (239 Tests, 100% PASS):
 npm test
 
 # Nur Geometrie-, Linter- und LLM-Router-Tests (89 Tests):
@@ -350,8 +352,17 @@ npm run test:dry
 # Nur WebSocket-, Web-UI-CAD- und Session-Handoff-Tests (80 Tests):
 npm run test:mission
 
-# 31-Punkte-Verbesserungs- & Härtungstests (18 Tests):
-npm run test:improvements
+# Survival Meilenstein 1 (Kisten, Entnahme, Version 26.3, Farming - 34 Tests):
+npm run test:milestone1
+
+# Survival Meilenstein 2 (Threat-FSM, Taktischer Rückzug, Schlaf, Reconnect - 44 Tests):
+npm run test:milestone2
+
+# Authenticated Credential Vault (30 Tests):
+npm run test:vault
+
+# Safe Probe Worker & Hot-Reload Endpoints (22 Tests):
+npm run test:model
 ```
 
 ### Abgedeckte Testbereiche:

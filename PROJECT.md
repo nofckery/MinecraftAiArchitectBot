@@ -1,57 +1,74 @@
-# Project: Autonomous Low-Resource AI Minecraft Architect Bot (v2.0 SOTA)
+# Project: mc-architect-bot Modernization & Test Decoupling
 
 ## Architecture
-Das Projekt ist eine modulare Node.js-Anwendung (ES Modules, Node >= 20), die natürliche Sprachbefehle via Multi-Provider LLM-Kaskade in 3D-Minecraft-Bauwerke übersetzt und via Mineflayer/RCON ausführt oder im Three.js 3D CAD Web-Dashboard darstellt.
-
-### Subsysteme & Datenfluss
-1. **Perception**: `src/world/worldScanner.js` (Wolle-Marker-Erkennung, Geländehöhenscan, Nachbarschaftspalette).
-2. **Cognitive Synthesis & AI**: `src/ai/llmRouter.js` (4-Stufen LLM-Kaskade), `src/ai/architectAgent.js` (VM-Sandbox, Self-Healing), `src/ai/prompts.js`, `src/ai/blueprintMemory.js`.
-3. **Builder SDK & CAD Engine**: `src/builder/voxelCanvas.js` (3D-Grid, Fuzzy Matching, Greedy Meshing), `src/builder/archPrimitives.js` (12 Module), `src/builder/stateTransform.js` (Rotationsmathematik).
-4. **Structural Linter**: `src/builder/structuralLinter.js` (BFS Flood-Fill Statik, Tür-Clearance, Anti-Cube Ästhetik).
-5. **Schematic Engine**: `src/builder/schematicManager.js` (Sponge .schem, Litematica .litematic, Vanilla .nbt, MCEdit .schematic).
-6. **Execution & Rollback**: `src/builder/worldExecutor.js` (2-Phasen Topologie), `src/world/undoManager.js` (Undo-Journal).
-7. **Bot & Dual Control**: `src/bot/botClient.js`, `src/bot/sessionHandoff.js` (1-Account Handoff), `src/bot/chatController.js`, `src/bot/inventoryManager.js`.
-8. **Mission Control Web-UI**: `src/web/dashboardServer.js`, `src/web/public/` (Three.js 3D CAD, 2D Relief Map, WebSocket Telemetrie).
-
----
+- **Bot Core & Threat Management**: Mineflayer bot lifecycle, threat detection, state machine combat (`src/bot/botClient.js`, `src/bot/threatManager.js`).
+- **AI Model Router & Safe Probe Worker**: LLM endpoint discovery, dual-phase probe worker (Phase 1 metadata/models, Phase 2 chat completion ping), resilient failure detection (`src/ai/modelRouter.js`, `src/ai/safeProbeWorker.js`).
+- **Config & Version Management**: Minecraft protocol version discovery, physics handling via clean Mineflayer plugins (`src/config/versionResolver.js`, `src/config/envManager.js`, `src/security/credentialVault.js`).
+- **Builder & World Execution**: Voxel canvas, greedy meshing, robust block placement error handling (`src/builder/worldExecutor.js`, `src/builder/greedyMesher.js`, `src/builder/voxelCanvas.js`).
+- **Cockpit Web UI & Frontend Submodules**: Express + WebSocket dashboard, decoupled ES submodules (`src/web/dashboardServer.js`, `src/web/public/app.js`, `src/web/public/js/`).
+- **Test Infrastructure**: Behavioral contract testing, unit and integration suites under `npm test`, stress and adversarial suites in `test/`.
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |
 |---|---------|-------------|-----------|--------|
-| 1 | Soll-Ist-Analyse Dokument | Strukturierter Vergleich zwischen Master Architecture Spec v2.0 und Ist-Zustand des Codes | M1 | Survey E1, E2, R1 |
-| 2 | Mocks & Stubs Bestandsaufnahme | Exakte Liste aller 31 Mocks, Platzhalter, ungenutzter Stubs und Offline-Simulationen mit Dateipfaden & Zeilen | M1 | Survey E2, R1 |
-| 3 | Erweiterungs- & Verbesserungsempfehlungen | Detaillierte Empfehlungen geordnet nach Subsystemen (Pathfinding, AI, Survival, CAD, Security) | M1 | Survey E1, E2, R2 |
-| 4 | Publikationsreife README.md | Vollständige Dokumentation: Projektbeschreibung, Features, Web CAD UI, 169 Tests, Quickstart, Konfigurationstabelle, RCON, Troubleshooting | M2 | Survey E1, E3, R3 |
-| 5 | Open Source Lizenz & Contributing | MIT-Lizenzdatei `LICENSE` und Beitragsrichtlinien `CONTRIBUTING.md` | M2 | Survey E1, E3, R3 |
-| 6 | Package.json Metadaten | Ergänzung von description, keywords, author, license, repository, bugs in `package.json` | M2 | Survey E3, R3 |
-| 7 | Release-taugliche .gitignore | Zuverlässiger Ausschluss von `node_modules/`, `.env.*`, `.agents/`, `data/bot.log`, `data/schematics/*`, IDE- & OS-Dateien | M2 | Survey E1, E3, R4 |
-| 8 | Repository Hygiene & Cleanup | Bereinigung temporärer Testschematics, Log-Bereinigung, Erstellung von `data/schematics/.gitkeep` | M2 | Survey E3, R4 |
-| 9 | Git-Initialisierung & Secret Scan | Bestätigung der Abwesenheit von Secrets/Keys und Initialisierung des lokalen Git-Repositories | M2 | Survey E3, R4 |
-| 10 | Qualitätssicherung & Forensic Integrity Audit | 169/169 Tests Verifikation, Dokumentations-Links-Prüfung, Challenger-Tests, Forensic Integrity Audit | M3 | Survey E1, E2, E3, Gate |
-
----
+| 1 | Robust Combat State Logic | Replace wall-clock `backpedalUntil` timer block in `src/bot/threatManager.js` with non-blocking combat state logic allowing cooldown-ready strikes | M1 | ORIGINAL_REQUEST R2 & R3 |
+| 2 | Creeper Neutralization Verification | Ensure `challenger2SurvivalTest.js` Suite 9 passes with creeper defeated (health 0) | M1 | ORIGINAL_REQUEST R2 |
+| 3 | Safe Probe Worker Error Handling | Replace blanket `try/catch` around `res.json()` in `src/ai/safeProbeWorker.js` with explicit response text parsing and error discrimination | M2 | ORIGINAL_REQUEST R2 & R3 |
+| 4 | Probe Reset Offline Status | Ensure `challenger_m5_router_probe_stress.js` Section 3.1 Phase 1 reports 'offline' on socket reset | M2 | ORIGINAL_REQUEST R2 |
+| 5 | Clean Version Handling | Eliminate runtime monkey-patching of `minecraft-data`, `mineflayer`, and `minecraft-protocol`, and eliminate disk writes to `node_modules` in `src/config/versionResolver.js` | M3 | ORIGINAL_REQUEST R3 |
+| 6 | Robust WorldExecutor Disconnect Detection | Replace substring matching on `opErr.message` with structured error code and client state checks in `src/builder/worldExecutor.js` | M3 | ORIGINAL_REQUEST R3 |
+| 7 | Eliminate Artificial Re-Exports | Remove artificial re-exports from `src/security/credentialVault.js` and `src/builder/voxelCanvas.js`; update importing tests to use canonical sources | M3 | ORIGINAL_REQUEST R1 & R3 |
+| 8 | Clean Frontend Facades & Modularity | Remove redundant facades and re-exports from `src/web/public/app.js` and `voxelCanvas.js`, reducing monolithic line counts | M4 | ORIGINAL_REQUEST R3 & R4 |
+| 9 | Test Suite Decoupling (`fs.readFileSync`) | Refactor brittle tests scraping source code strings via `fs.readFileSync` in `test/missionControlTest.js`, `test/dashboardCockpitTest.js`, `test/manualGamemodeFrontendTest.js`, etc. to test behavioral contracts, exports, or DOM structure | M4 | ORIGINAL_REQUEST R1 |
+| 10 | Modularity Assertions in Adversarial Tests | Replace arbitrary `< 1000` line-count check in `test/challenger_refactor_2_adversarial.js` with structural modularity assertions | M4 | ORIGINAL_REQUEST R1 & R2 |
+| 11 | Full Test Suite Reliability & E2E Pass | Verify all 19 standard suites pass with exit code 0 (`npm test`) and all 25 challenger/stress suites pass with exit code 0 | M5 | ORIGINAL_REQUEST R2 |
+| 12 | Forensic Integrity Verification | Teamwork forensic auditor runs integrity checks (no dummy facades, no hardcoding, clean implementations) | M5 | ORIGINAL_REQUEST Acceptance Criteria |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Audit- & Analyse-Berichte | Erstellung von `SOLL_IST_ANALYSE.md` und `VERBESSERUNGSPOTENZIALE.md` (inkl. 31-Punkte Mock-Inventar) | Phase 0 Survey | **DONE** (`SOLL_IST_ANALYSE.md`, `VERBESSERUNGSPOTENZIALE.md`) |
-| M2 | GitHub-Dokumentation & Release-Hygiene | `README.md`, `LICENSE`, `CONTRIBUTING.md`, `package.json`, `.gitignore`, Cleanup, `.gitkeep`, Git Init & Remote | M1 | **DONE** (Vollständiges Release-Paket & Remote `nofckery/MinecraftAiArchitectBot`) |
-| M3 | E2E Review & Forensic Gate | Ausführung aller Tests, Reviewer-Prüfung, Challenger-Verifikation, Forensic Integrity Audit | M1, M2 | **DONE** (Gate Iteration: PASS, Reviewer APPROVE, Challenger APPROVE, Auditor CLEAN) |
-| M4 | 31-Punkte Behebungs- & Härtungscampagne | Lückenlose Behebung aller 31 Schwachstellen, Mocks & Stubs, Structure-NBT-Export, Linter-Self-Healing, Survival-Schutz, 187 Assertions | M1-M3 | **DONE (100% BEHOBEN, 187/187 PASS)** |
-
----
+| M1 | ThreatManager Combat State Logic & Survival Test | `src/bot/threatManager.js`, `test/challenger2SurvivalTest.js` | none | DONE |
+| M2 | SafeProbeWorker Error Handling & Router Probe Stress | `src/ai/safeProbeWorker.js`, `test/challenger_m5_router_probe_stress.js` | none | DONE |
+| M3 | VersionResolver & Builder Cleanup & Canonical Exports | `src/config/versionResolver.js`, `src/builder/worldExecutor.js`, `src/security/credentialVault.js`, `src/builder/voxelCanvas.js`, `test/coreUtilitiesTest.js` | none | DONE |
+| M4 | Frontend Facade Cleanup & Test Decoupling | `src/web/public/app.js`, `test/challenger_refactor_2_adversarial.js`, `test/missionControlTest.js`, `test/dashboardCockpitTest.js`, `test/manualGamemodeFrontendTest.js`, `test/settingsAndOnboardingTest.js`, `test/viewerFullscreenAndPopoutTest.js` | M1, M2, M3 | DONE |
+| M5 | Full Suite E2E Regression Pass & Forensic Integrity Audit | Full repository test suites (`npm test`, all `test/challenger*.js`) & `teamwork_auditor` verification | M1, M2, M3, M4 | DONE |
 
 ## Interface Contracts
-### Documentation ↔ Repository
-- `README.md`: Verweist auf `SOLL_IST_ANALYSE.md`, `VERBESSERUNGSPOTENZIALE.md`, `.env.example`, `package.json` und `LICENSE`.
-- `SOLL_IST_ANALYSE.md`: Exakte Referenzen auf Quelldateien (`src/...`), Testergebnisse (`test/dryRunTest.js`, `test/missionControlTest.js`, `test/improvementsTest.js`), `MASTER_ARCHITECTURE_SPEC.md`.
-- `VERBESSERUNGSPOTENZIALE.md`: Tabellarisches Mock- & Stubs-Inventar mit Datei, Zeile, Mangel und Bestätigung der 100%igen Behebung.
-- `.gitignore`: Schützt `.env`, `.env.*`, `.agents/`, `node_modules/`, `data/bot.log`, temporäre Schematics, während `.env.example`, `data/schematics/.gitkeep`, `data/style_memory.json` getrackt bleiben.
 
----
+### M1: ThreatManager Combat Lifecycle
+- `ThreatManager.prototype.combatStep()`:
+  - Non-blocking: must not freeze or return early due to wall-clock `backpedalUntil` when attack weapon cooldown is ready (`Date.now() - this.lastAttackTime >= cooldown`).
+  - Target state: if mob health drops to <= 0 or mob dies during attack, immediately clear combat target and set state to idle.
+  - Verification: `node test/challenger2SurvivalTest.js` completes with exit code 0 and creeper defeated.
+
+### M2: SafeProbeWorker Error Discrimination
+- `probePhase1Metadata(endpoint)`:
+  - On body stream truncation / socket reset (`ECONNRESET`, `Premature close`, `ERR_STREAM_DESTROYED`): propagate error or return `status: 'offline'`.
+  - On valid HTTP 200 with non-JSON text: if text is plain "OK", return `{ models: [], status: 200 }`; if malformed JSON or socket closed, treat as failure (`status: 'offline'`).
+  - Verification: `node test/challenger_m5_router_probe_stress.js` reports Phase 1 offline and exits with code 0.
+
+### M3: VersionResolver & Canonical Exports
+- `VersionResolver`:
+  - Does NOT mutate global packages (`minecraft-data`, `mineflayer`, `minecraft-protocol`) or write to `node_modules`.
+  - Provides clean version normalization and feature flags.
+- `WorldExecutor`:
+  - Disconnect detection checks `bot._client?.ended || opErr.code === 'ERR_DISCONNECTED' || opErr.code === 'ECONNRESET' || opErr.code === 'ERR_STREAM_DESTROYED' || opErr.message?.includes('disconnected')`.
+- Canonical Exports:
+  - `atomicRenameWithRetry` imported directly from `src/utils/fileUtils.js`.
+  - `BLOCK_ALIASES`, `normalizeBlockName` imported directly from `src/builder/greedyMesher.js`.
+
+### M4: Frontend Modularity & Behavioral Contracts
+- `app.js`:
+  - Removes redundant re-exports while maintaining core event listeners and UI dispatch.
+- Decoupled Test Contracts:
+  - Tests verify exported functions (`typeof exportName === 'function'`), DOM structure via parser/JSDOM, or HTTP status codes instead of `fs.readFileSync(sourceFile).includes(...)`.
+  - `challenger_refactor_2_adversarial.js`: verifies modular submodules exist and export required interfaces without arbitrary `< 1000` line limit assertions.
 
 ## Code Layout
-- Root: `README.md`, `LICENSE`, `CONTRIBUTING.md`, `package.json`, `package-lock.json`, `.gitignore`, `.env.example`, `index.js`, `SOLL_IST_ANALYSE.md`, `VERBESSERUNGSPOTENZIALE.md`, `MASTER_ARCHITECTURE_SPEC.md`
-- `src/`: Quellcode mit gehärtetem Collision-Avoidance, Material-Vorabprüfung, Survival-Schutz, Linter-Self-Healing und NBT-Export
-- `test/`: Test-Suiten `dryRunTest.js` (89 Tests), `missionControlTest.js` (80 Tests) und `improvementsTest.js` (18 Tests)
-- `data/`: `style_memory.json`, `schematics/.gitkeep` (Logs und temporäre Testdateien werden ignoriert/bereinigt)
+- `src/bot/threatManager.js`: Combat and threat management logic.
+- `src/ai/safeProbeWorker.js`: Endpoint probe worker and error handling.
+- `src/config/versionResolver.js`: Protocol and version resolution without global mutation.
+- `src/builder/worldExecutor.js`: World construction and structured error handling.
+- `src/security/credentialVault.js`: Clean vault module without artificial re-exports.
+- `src/web/public/app.js`: Clean frontend orchestrator.
+- `test/`: Standard and challenger test suites refactored for behavioral contracts.

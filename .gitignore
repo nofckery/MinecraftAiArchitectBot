@@ -25,6 +25,10 @@ pnpm-debug.log*
 logs/
 data/bot.log
 data/undo_journal.json
+data/*.vault
+data/endpoints.json
+data/test_*
+
 
 # ==============================================================================
 # GENERATED SCHEMATICS & USER BUILDS (Keep folder via .gitkeep)

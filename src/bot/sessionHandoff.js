@@ -6,7 +6,8 @@ import { worldExecutor } from '../builder/worldExecutor.js';
 export const HANDOFF_STATES = {
   ONLINE_ACTIVE: 'ONLINE_ACTIVE',
   PAUSED_OWNER_INGAME: 'PAUSED_OWNER_INGAME',
-  RECONNECTING: 'RECONNECTING'
+  RECONNECTING: 'RECONNECTING',
+  PAUSED_SLEEP_NIGHT: 'PAUSED_SLEEP_NIGHT'
 };
 
 export class SessionHandoff {
@@ -36,7 +37,11 @@ export class SessionHandoff {
   }
 
   isPaused() {
-    return this.state === HANDOFF_STATES.PAUSED_OWNER_INGAME || this.state === HANDOFF_STATES.RECONNECTING;
+    return (
+      this.state === HANDOFF_STATES.PAUSED_OWNER_INGAME ||
+      this.state === HANDOFF_STATES.RECONNECTING ||
+      this.state === HANDOFF_STATES.PAUSED_SLEEP_NIGHT
+    );
   }
 
   isDuplicateLoginReason(reason) {
@@ -112,8 +117,11 @@ export class SessionHandoff {
     const intervalMs = settings.SERVER_PING_INTERVAL_MS || 10000;
     logger.info(`Starte Server-Ping-Loop alle ${intervalMs / 1000}s auf ${settings.MC_HOST}:${settings.MC_PORT}...`);
 
+    this._pingSessionId = (this._pingSessionId || 0) + 1;
+    const currentSessionId = this._pingSessionId;
+
     const runPing = async () => {
-      if (this.state !== HANDOFF_STATES.PAUSED_OWNER_INGAME || !this.autoResumeEnabled) {
+      if (this.state !== HANDOFF_STATES.PAUSED_OWNER_INGAME || !this.autoResumeEnabled || this._pingSessionId !== currentSessionId) {
         this.stopPingLoop();
         return;
       }
@@ -129,6 +137,11 @@ export class SessionHandoff {
           host: settings.MC_HOST,
           port: settings.MC_PORT
         });
+
+        // Sicherstellen, dass der Loop während des asynchronen Pings nicht gestoppt oder invalidiert wurde
+        if (this.state !== HANDOFF_STATES.PAUSED_OWNER_INGAME || !this.autoResumeEnabled || this._pingSessionId !== currentSessionId) {
+          return;
+        }
 
         const sample = response?.players?.sample;
         const targetUsername = (settings.MC_USERNAME || '').toLowerCase();
@@ -168,9 +181,14 @@ export class SessionHandoff {
   }
 
   stopPingLoop() {
+    this._pingSessionId = (this._pingSessionId || 0) + 1;
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
+    }
+    if (this.cooldownTimer) {
+      clearTimeout(this.cooldownTimer);
+      this.cooldownTimer = null;
     }
   }
 

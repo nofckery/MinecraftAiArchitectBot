@@ -1,62 +1,15 @@
-import OpenAI from 'openai';
 import { settings } from '../config/settings.js';
 import { logger } from '../utils/logger.js';
+import { Endpoint, DynamicEndpoint } from './router/DynamicEndpoint.js';
 
-class Endpoint {
-  constructor(provider, apiKey, baseURL, model, tier, options = {}) {
-    this.provider = provider;
-    this.apiKey = apiKey;
-    this.baseURL = baseURL;
-    this.model = model;
-    this.tier = tier; // 'FAST_TIER' | 'ARCHITECT_TIER' | 'REASONING_TIER'
-    this.cooldownUntil = 0;
-    this.disabled = false;
-    this.isZeroKey = !!options.isZeroKey;
-    this.isThinkingModel = !!options.isThinkingModel ||
-      model.toLowerCase().includes('r1') ||
-      model.toLowerCase().includes('reasoning') ||
-      model.toLowerCase().includes('thinking') ||
-      model.toLowerCase().includes('gpt-oss');
-
-    // Tägliches Kontingent-Tracking (z. B. SambaNova 20 RPD)
-    this.dailyRequestLimit = options.dailyRequestLimit || Infinity;
-    this.requestsToday = 0;
-    this.lastResetDay = new Date().getUTCDate();
-
-    // Hinweis: Schlüssellose Gateways (Kilo AI, LLM7) verlangen einen nicht-leeren String für den OpenAI-SDK-Client
-    this.client = new OpenAI({
-      apiKey: this.apiKey || 'dummy-key',
-      baseURL: this.baseURL
-    });
-  }
-
-  isAvailable() {
-    if (this.disabled) return false;
-
-    // Prüfe täglichen Reset für Tageskontingente
-    const currentDay = new Date().getUTCDate();
-    if (currentDay !== this.lastResetDay) {
-      this.requestsToday = 0;
-      this.lastResetDay = currentDay;
-    }
-
-    if (this.requestsToday >= this.dailyRequestLimit) {
-      return false;
-    }
-
-    return Date.now() >= this.cooldownUntil;
-  }
-
-  recordSuccess() {
-    this.requestsToday++;
-  }
-}
+export { Endpoint, DynamicEndpoint };
 
 export class LLMRouter {
   constructor() {
     this.fastEndpoints = [];
     this.architectEndpoints = [];
     this.lastActiveProvider = 'Cerebras';
+    this._reloadQueue = Promise.resolve();
     this.initPools();
   }
 
@@ -67,6 +20,23 @@ export class LLMRouter {
   initPools() {
     this.fastEndpoints = [];
     this.architectEndpoints = [];
+
+    // =========================================================================
+    // STUFE 0: GITHUB MODELS (RFC 8628 Device Flow / GITHUB_TOKEN)
+    // =========================================================================
+    if (settings.GITHUB_TOKEN && settings.GITHUB_TOKEN.trim().length > 0) {
+      const ghToken = settings.GITHUB_TOKEN.trim();
+      if (settings.GITHUB_FAST_MODEL) {
+        this.fastEndpoints.push(
+          new Endpoint('GitHub', ghToken, 'https://models.github.ai/inference', settings.GITHUB_FAST_MODEL, 'FAST_TIER')
+        );
+      }
+      if (settings.GITHUB_ARCHITECT_MODEL) {
+        this.architectEndpoints.push(
+          new Endpoint('GitHub', ghToken, 'https://models.github.ai/inference', settings.GITHUB_ARCHITECT_MODEL, 'ARCHITECT_TIER')
+        );
+      }
+    }
 
     // =========================================================================
     // STUFE 1: HIGH-SPEED & AGENTIC LOOPS (Cerebras & Groq)
@@ -199,10 +169,10 @@ export class LLMRouter {
     // 10. SiliconFlow (Dauerhaft kostenlose L0-Modelle)
     for (const key of settings.SILICONFLOW_API_KEYS) {
       this.fastEndpoints.push(
-        new Endpoint('SiliconFlow', key, 'https://api.siliconflow.com/v1', settings.SILICONFLOW_MODEL, 'FAST_TIER')
+        new Endpoint('SiliconFlow', key, 'https://api.siliconflow.cn/v1', settings.SILICONFLOW_MODEL, 'FAST_TIER')
       );
       this.architectEndpoints.push(
-        new Endpoint('SiliconFlow', key, 'https://api.siliconflow.com/v1', settings.SILICONFLOW_MODEL, 'ARCHITECT_TIER')
+        new Endpoint('SiliconFlow', key, 'https://api.siliconflow.cn/v1', settings.SILICONFLOW_MODEL, 'ARCHITECT_TIER')
       );
     }
 
@@ -235,9 +205,114 @@ export class LLMRouter {
     return tier === 'FAST_TIER' ? this.architectEndpoints : this.fastEndpoints;
   }
 
+  /**
+   * Hot-reloads model pools from an EndpointManager instance using a serialized FIFO Async Mutex Queue.
+   * Guarantees zero downtime for in-flight requests and prevents out-of-order state corruption.
+   *
+   * @param {Object} endpointManager - EndpointManager instance
+   * @returns {Promise<void>}
+   */
+  reloadPools(endpointManager) {
+    const previousQueue = this._reloadQueue || Promise.resolve();
+    const task = previousQueue
+      .catch(() => {}) // Prevent stalled queue on prior error
+      .then(async () => {
+        return await this._doReloadPools(endpointManager);
+      });
+    this._reloadQueue = task;
+    return task;
+  }
+
+  async _doReloadPools(endpointManager) {
+    if (!endpointManager) {
+      logger.warn('[LLMRouter] Kein EndpointManager übergeben, setze Standard-Pools zurück.');
+      this.initPools();
+      return;
+    }
+
+    logger.info('[LLMRouter] Starte Hot-Reload der Modell-Pools...');
+    const configs = typeof endpointManager.getAllEnabledEndpoints === 'function'
+      ? endpointManager.getAllEnabledEndpoints()
+      : (typeof endpointManager.getAllEndpoints === 'function'
+          ? endpointManager.getAllEndpoints().filter(e => e.enabled)
+          : []);
+
+    const newFast = [];
+    const newArchitect = [];
+
+    for (const config of configs) {
+      let rawSecret = '';
+      if (typeof endpointManager.getSecretForRef === 'function' && config.credentialRef) {
+        rawSecret = await endpointManager.getSecretForRef(config.credentialRef);
+      } else if (typeof endpointManager.getSecretForRef === 'function') {
+        rawSecret = await endpointManager.getSecretForRef(config.id);
+      } else if (typeof endpointManager.getSecret === 'function') {
+        rawSecret = await endpointManager.getSecret(config.id);
+      } else if (config.apiKey) {
+        rawSecret = config.apiKey;
+      }
+
+      const endpoint = new DynamicEndpoint({
+        ...config,
+        apiKey: rawSecret || 'none'
+      });
+
+      if (config.tier === 'FAST_TIER') newFast.push(endpoint);
+      if (config.tier === 'ARCHITECT_TIER') newArchitect.push(endpoint);
+      if (config.tier === 'FALLBACK_POOL' || config.tier === 'REASONING_TIER') {
+        newFast.push(endpoint);
+        newArchitect.push(endpoint);
+      }
+    }
+
+    // Sort by priority ascending (1 = highest priority)
+    newFast.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+    newArchitect.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+
+    // Safety net: If pools are empty and zero-key is enabled, inject emergency gateways
+    if (newFast.length === 0 || newArchitect.length === 0) {
+      if (settings.ENABLE_ZERO_KEY_FALLBACK) {
+        const kiloFast = new DynamicEndpoint({
+          provider: 'KiloAI',
+          baseURL: settings.KILO_GATEWAY_URL,
+          model: settings.KILO_MODEL,
+          tier: 'FAST_TIER',
+          authType: 'none',
+          isZeroKey: true
+        });
+        const kiloArch = new DynamicEndpoint({
+          provider: 'KiloAI',
+          baseURL: settings.KILO_GATEWAY_URL,
+          model: settings.KILO_MODEL,
+          tier: 'ARCHITECT_TIER',
+          authType: 'none',
+          isZeroKey: true
+        });
+        if (newFast.length === 0) newFast.push(kiloFast);
+        if (newArchitect.length === 0) newArchitect.push(kiloArch);
+      }
+    }
+
+    // Atomic pointer swap
+    this.fastEndpoints = newFast;
+    this.architectEndpoints = newArchitect;
+    logger.info(`[LLMRouter] Hot-Reload abgeschlossen: ${newFast.length} Fast, ${newArchitect.length} Architect Endpoints aktiv.`);
+  }
+
   handleError(endpoint, error) {
     const status = error.status || error.statusCode || error.response?.status;
     const headers = error.headers || error.response?.headers;
+
+    const isTimeout = error.name === 'APIConnectionTimeoutError' ||
+                      error.name === 'TimeoutError' ||
+                      error.constructor?.name === 'APIConnectionTimeoutError' ||
+                      (typeof OpenAI !== 'undefined' && OpenAI.APIConnectionTimeoutError && error instanceof OpenAI.APIConnectionTimeoutError) ||
+                      error.code === 'ETIMEDOUT' ||
+                      error.code === 'ECONNABORTED' ||
+                      error.cause?.code === 'ETIMEDOUT' ||
+                      error.cause?.code === 'ECONNABORTED' ||
+                      /(timeout|timed\s*out)/i.test(error.message || '') ||
+                      /(timeout|timed\s*out)/i.test(error.cause?.message || '');
 
     let retryAfterSec = null;
     if (headers) {
@@ -250,13 +325,22 @@ export class LLMRouter {
       }
     }
 
-    if (status === 401 || status === 403) {
+    const errMsg = (error.message || '').toLowerCase();
+    const errorBody = error.error || error.response?.data || {};
+    const errorBodyMsg = (typeof errorBody === 'string' ? errorBody : (errorBody.message || JSON.stringify(errorBody))).toLowerCase();
+    const isInvalidKey = status === 401 || status === 403 ||
+      (status === 400 && (errMsg.includes('api key') || errorBodyMsg.includes('api key') || errorBodyMsg.includes('api_key_invalid') || errorBodyMsg.includes('invalid_argument')));
+
+    if (isInvalidKey) {
       endpoint.disabled = true;
       logger.warn(`API-Schlüssel für [${endpoint.provider} (${endpoint.model})] ungültig oder abgelaufen (HTTP ${status}). Deaktiviere Key für diese Sitzung.`);
     } else if (status === 429) {
       const waitMs = retryAfterSec ? retryAfterSec * 1000 : 65000;
       endpoint.cooldownUntil = Date.now() + waitMs;
       logger.warn(`Rate-Limit (HTTP 429) auf [${endpoint.provider} (${endpoint.model})]. Cooldown für ${Math.round(waitMs / 1000)}s gesetzt. Wechsle sofort nächsten Provider...`);
+    } else if (isTimeout) {
+      endpoint.cooldownUntil = Date.now() + 30000;
+      logger.warn(`Zeitüberschreitung (Timeout 30s) auf [${endpoint.provider} (${endpoint.model})]. Wechsle sofort nächsten Provider...`);
     } else {
       // Allgemeiner Netzwerk-/Serverfehler: Kurzer Cooldown von 10 Sekunden
       endpoint.cooldownUntil = Date.now() + 10000;
@@ -276,16 +360,17 @@ export class LLMRouter {
     let lastError = null;
 
     // Suche verfügbaren Endpoint mit Cross-Provider-Rotation
-    for (let attempt = 0; attempt < candidateEndpoints.length; attempt++) {
-      const endpoint = candidateEndpoints.find(e => e.isAvailable());
+    const availableEndpoints = candidateEndpoints.filter(e => e.isAvailable());
 
-      if (!endpoint) {
-        const minWaitMs = Math.min(...candidateEndpoints.filter(e => !e.disabled).map(e => Math.max(0, e.cooldownUntil - Date.now())));
-        if (minWaitMs > 0 && minWaitMs !== Infinity) {
-          logger.warn(`Alle LLM-Endpoints im Cooldown. Kürzeste Wartezeit: ${Math.round(minWaitMs / 1000)}s.`);
-        }
-        break;
+    if (availableEndpoints.length === 0) {
+      const minWaitMs = Math.min(...candidateEndpoints.filter(e => !e.disabled).map(e => Math.max(0, e.cooldownUntil - Date.now())));
+      if (minWaitMs > 0 && minWaitMs !== Infinity) {
+        logger.warn(`Alle LLM-Endpoints im Cooldown. Kürzeste Wartezeit: ${Math.round(minWaitMs / 1000)}s.`);
       }
+    }
+
+    for (const endpoint of availableEndpoints) {
+      if (!endpoint.isAvailable()) continue;
 
       try {
         logger.debug(`Sende Anfrage an [${endpoint.provider} (${endpoint.model})] (${tier})...`);
@@ -299,11 +384,21 @@ export class LLMRouter {
         const requestPayload = {
           model: endpoint.model,
           messages,
-          temperature: options.temperature ?? 0.2,
+          temperature: options.temperature ?? endpoint.temperature ?? 0.2,
           max_tokens: tokenLimit
         };
 
-        const response = await endpoint.client.chat.completions.create(requestPayload);
+        // Context window overrides for local Ollama runners
+        if (endpoint.category === 'local' || endpoint.baseURL?.includes('11434')) {
+          requestPayload.options = { num_ctx: endpoint.contextWindow || 16384 };
+        }
+
+        const requestOptions = {
+          timeout: options.timeout || endpoint.timeout || 30000,
+          maxRetries: options.maxRetries ?? endpoint.maxRetries ?? 0
+        };
+
+        const response = await endpoint.client.chat.completions.create(requestPayload, requestOptions);
         const reply = response.choices?.[0]?.message?.content || '';
 
         endpoint.recordSuccess();

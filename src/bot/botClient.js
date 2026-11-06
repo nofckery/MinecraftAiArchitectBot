@@ -2,11 +2,16 @@ import mineflayer from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
 const { pathfinder, Movements } = pathfinderPkg;
 import { settings } from '../config/settings.js';
+import { VersionResolver } from '../config/versionResolver.js';
 import { logger } from '../utils/logger.js';
 import { ArchitectAgent } from '../ai/architectAgent.js';
 import { ChatController } from './chatController.js';
 import { sessionHandoff } from './sessionHandoff.js';
 import { dashboardServer } from '../web/dashboardServer.js';
+import { ThreatManager, threatManager } from './threatManager.js';
+import { SleepController, sleepController, SLEEP_STATES } from './sleepController.js';
+import { serverRights } from './serverRights.js';
+import { manualController } from './manualController.js';
 
 export class BotClient {
   constructor() {
@@ -16,6 +21,10 @@ export class BotClient {
     this.isReconnecting = false;
     this.shouldRun = true;
     this.reconnectTimeout = null;
+    this.threatManager = threatManager;
+    this.sleepController = sleepController;
+    this.sleepController.setBotClient(this);
+    this.manualController = manualController;
 
     sessionHandoff.setBotClient(this);
     dashboardServer.init(this);
@@ -23,6 +32,14 @@ export class BotClient {
 
   start() {
     this.shouldRun = true;
+    this.cancelReconnect();
+    if (this.bot) {
+      try {
+        this.bot.quit();
+      } catch {}
+      this.bot = null;
+    }
+    this.broadcastState('CONNECTING', false);
     this.initBot();
   }
 
@@ -30,6 +47,9 @@ export class BotClient {
     this.shouldRun = false;
     this.cancelReconnect();
     sessionHandoff.stopPingLoop();
+    this.threatManager?.stopMonitoring();
+    this.sleepController?.stopMonitoring();
+    this.manualController?.deactivate();
 
     if (this.bot) {
       try {
@@ -40,7 +60,20 @@ export class BotClient {
       }
       this.bot = null;
     }
+    this.broadcastState('STOPPED', false);
     logger.info('Bot-Client sauber beendet.');
+  }
+
+  broadcastState(state, connected = false) {
+    if (dashboardServer && typeof dashboardServer.broadcast === 'function') {
+      dashboardServer.broadcast({
+        type: 'bot_state_change',
+        running: this.shouldRun,
+        connected,
+        state,
+        username: this.bot?.username || settings.MC_USERNAME || 'BaumeisterKI'
+      });
+    }
   }
 
   cancelReconnect() {
@@ -64,22 +97,55 @@ export class BotClient {
     this.initBot();
   }
 
-  initBot() {
+  async initBot() {
     logger.info(`Verbinde zu Minecraft-Server ${settings.MC_HOST}:${settings.MC_PORT} als '${settings.MC_USERNAME}'...`);
+
+    // 26.3 Kompatibilitäts-Shims & Versionsauflösung anwenden
+    VersionResolver.applyCompatibilityShims();
+    const verConfig = await VersionResolver.resolveConnectionOptions(
+      settings.MC_HOST,
+      settings.MC_PORT,
+      settings.MC_VERSION
+    );
 
     const botOptions = {
       host: settings.MC_HOST,
       port: settings.MC_PORT,
       username: settings.MC_USERNAME,
-      auth: settings.MC_AUTH
+      auth: settings.MC_AUTH,
+      hideErrors: true
     };
 
-    if (settings.MC_VERSION) {
-      botOptions.version = settings.MC_VERSION;
+    if (settings.MC_AUTH === 'microsoft') {
+      botOptions.onMsaCode = (data) => {
+        const directUrl = data.verification_uri
+          ? `${data.verification_uri}?otc=${data.user_code}`
+          : `https://www.microsoft.com/link?otc=${data.user_code}`;
+
+        logger.info(`[MSA] Microsoft-Authentifizierung erforderlich!`);
+        logger.info(`[MSA] Bitte im Browser öffnen: ${directUrl} (Code: ${data.user_code})`);
+
+        dashboardServer.broadcast({
+          type: 'msa_code',
+          userCode: data.user_code,
+          verificationUri: data.verification_uri || 'https://www.microsoft.com/link',
+          directUrl,
+          expiresIn: data.expires_in,
+          message: data.message
+        });
+      };
+    }
+
+    if (verConfig.version !== false) {
+      botOptions.version = verConfig.version;
+      if (verConfig.version === '26.3') {
+        botOptions.protocolVersion = 777;
+      }
     }
 
     try {
       this.bot = mineflayer.createBot(botOptions);
+      VersionResolver.patchBotClient(this.bot);
     } catch (err) {
       logger.error(`Initialer Verbindungsfehler: ${err.message}`);
       this.scheduleReconnect();
@@ -98,12 +164,34 @@ export class BotClient {
   setupEventHandlers() {
     const bot = this.bot;
 
-    // Chat-Hook für Dashboard
-    const origChat = bot.chat.bind(bot);
-    bot.chat = (msg) => {
-      dashboardServer.recordChat(bot.username || settings.MC_USERNAME, msg);
-      return origChat(msg);
+    // Server-Rechte dynamisch überwachen
+    serverRights.attachToBot(bot);
+
+    // Chat-Hook für Dashboard sicher anbinden (wartet, bis Mineflayer das Chat-Plugin injiziert hat)
+    const hookChat = () => {
+      if (bot.chat && !bot._chatHooked) {
+        bot._chatHooked = true;
+        const origChat = bot.chat.bind(bot);
+        bot.chat = (msg) => {
+          dashboardServer.recordChat(bot.username || settings.MC_USERNAME, msg);
+          return origChat(msg);
+        };
+      }
     };
+
+    if (bot.chat) {
+      hookChat();
+    } else {
+      bot.once('inject_allowed', hookChat);
+      bot.once('spawn', hookChat);
+    }
+
+    bot.on('login', () => {
+      dashboardServer.broadcast({
+        type: 'msa_success',
+        username: bot.username || settings.MC_USERNAME
+      });
+    });
 
     bot.once('spawn', () => {
       logger.build(`Bot '${bot.username}' erfolgreich auf dem Server gespawnt! (Position: ${bot.entity.position.floored()})`);
@@ -117,8 +205,15 @@ export class BotClient {
 
       sessionHandoff.onBotSpawn(bot);
       dashboardServer.onBotSpawn(bot);
+      this.broadcastState('ONLINE_ACTIVE', true);
+      this.threatManager.setBot(bot);
+      this.threatManager.startMonitoring();
+      this.manualController.setBot(bot);
+      this.sleepController.setBotClient(this);
+      this.sleepController.onBotSpawn(bot);
 
-      bot.chat(`BaumeisterKI bereit! Schreibe mir deinen Bau-Wunsch oder nutze: !scan, !preview, !undo, !stop, !instant, !come, !style`);
+      logger.build(`BaumeisterKI bereit! Mission Control Web-UI aktiv auf: http://localhost:${settings.WEB_DASHBOARD_PORT || 3080}`);
+      dashboardServer.recordChat('System', 'BaumeisterKI bereit! Schreibe Bau-Wünsche im Web-Dashboard oder nutze !scan, !preview, !undo, !stop, !instant, !come, !style');
     });
 
     bot.on('chat', (username, message) => {
@@ -132,6 +227,7 @@ export class BotClient {
 
     // 5.1 Mob-Defense & Notfall-Schutz: Bot reagiert auf Angriffe
     bot.on('entityHurt', async (entity) => {
+      if (this.manualController?.isActive()) return;
       if (entity === bot.entity) {
         logger.warn(`[DEFENSE] Bot wird angegriffen! Gesundheit: ${bot.health}/20.`);
         if (bot.inventory) {
@@ -152,7 +248,12 @@ export class BotClient {
     });
 
     bot.on('kicked', (reason) => {
-      logger.warn(`Bot wurde vom Server gekickt: ${reason}`);
+      this.manualController?.deactivate();
+      const reasonStr = typeof reason === 'object' ? JSON.stringify(reason) : String(reason);
+      logger.warn(`Bot wurde vom Server gekickt: ${reasonStr}`);
+      if (sessionHandoff.isPaused() || this.sleepController?.state === SLEEP_STATES.DISCONNECTED_FOR_NIGHT) {
+        return;
+      }
       if (settings.SINGLE_ACCOUNT_HANDOFF_MODE && sessionHandoff.handleKick(reason)) {
         return;
       }
@@ -164,8 +265,10 @@ export class BotClient {
     });
 
     bot.on('end', (reason) => {
+      this.manualController?.deactivate();
       logger.warn(`Verbindung zum Server beendet: ${reason}`);
-      if (sessionHandoff.isPaused()) {
+      this.broadcastState(this.shouldRun ? 'RECONNECTING' : 'STOPPED', false);
+      if (sessionHandoff.isPaused() || this.sleepController?.state === SLEEP_STATES.DISCONNECTED_FOR_NIGHT) {
         return;
       }
       if (settings.SINGLE_ACCOUNT_HANDOFF_MODE && sessionHandoff.handleKick(reason)) {

@@ -1,0 +1,289 @@
+{
+  "tamper": {
+    "total": 362,
+    "passed": 362,
+    "failed": 0,
+    "falseAccepts": 0
+  },
+  "concurrencyVaultReads": {
+    "total": 100,
+    "passed": 100,
+    "failed": 0
+  },
+  "concurrencyVaultWrites": {
+    "total": 100,
+    "passed": 100,
+    "failed": 0,
+    "epermCount": 0,
+    "secretsSurvived": 100
+  },
+  "concurrencyVaultMixed": {
+    "total": 100,
+    "passed": 100,
+    "failed": 0,
+    "epermCount": 0,
+    "secretsSurvived": 51
+  },
+  "concurrencyEndpoints": {
+    "total": 100,
+    "passed": 100,
+    "failed": 0,
+    "epermCount": 0,
+    "diskMatchesMemory": true
+  },
+  "masking": {
+    "total": 31,
+    "preserved": 31,
+    "overwritten": 0,
+    "cases": [
+      {
+        "name": "Standard OpenAI mask",
+        "input": "sk-proj-...-123",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Full 8 bullets mask",
+        "input": "••••••••",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Generic short prefix mask",
+        "input": "sk-...abc",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "GitHub device token mask",
+        "input": "gho_16...6912",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Codestral mask",
+        "input": "csk_...abcd",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Ellipsis with 4-char suffix",
+        "input": "...1234",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Short 4 bullets mask",
+        "input": "••••",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Black circle bullets",
+        "input": "●●●●●●●●",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Asterisk mask",
+        "input": "********",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Empty string",
+        "input": "",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "ASCII spaces",
+        "input": "   ",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Tabs",
+        "input": "\t\t\t",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "CRLF newlines",
+        "input": "\r\n\r\n",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Mixed whitespace & tabs",
+        "input": "  \t \r\n ",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Non-breaking space (U+00A0)",
+        "input": " ",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "En space (U+2002)",
+        "input": " ",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Em space (U+2003)",
+        "input": " ",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Ideographic space (U+3000)",
+        "input": "　",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "BOM / ZWNBSP (U+FEFF)",
+        "input": "﻿",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Zero-width space (U+200B)",
+        "input": "​",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Zero-width non-joiner (U+200C)",
+        "input": "‌",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Zero-width joiner (U+200D)",
+        "input": "‍",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "NUL byte (U+0000)",
+        "input": "\u0000",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "SOH byte (U+0001)",
+        "input": "\u0001",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "ESC byte (U+001B)",
+        "input": "\u001b",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "BEL byte (U+0007)",
+        "input": "\u0007",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "DEL byte (U+007F)",
+        "input": "",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Naked ellipsis (...)",
+        "input": "...",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Prefix only (sk-...)",
+        "input": "sk-...",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Ellipsis with trailing space",
+        "input": "... ",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      },
+      {
+        "name": "Prefix with bullets (sk-••••)",
+        "input": "sk-••••",
+        "expectPreserved": true,
+        "isPreserved": true,
+        "testPassed": true,
+        "storedVal": "csk_live_genuine_vault_api_key_ABC123456789"
+      }
+    ]
+  }
+}

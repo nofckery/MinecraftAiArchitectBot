@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { VersionResolver } from './versionResolver.js';
 dotenv.config();
 
 function parseBoolean(val, defaultVal = false) {
@@ -26,11 +27,30 @@ export const settings = {
   MC_PORT: parseInteger(process.env.MC_PORT, 25565),
   MC_USERNAME: process.env.MC_USERNAME || 'BaumeisterKI',
   MC_AUTH: process.env.MC_AUTH || 'offline',
-  MC_VERSION: process.env.MC_VERSION === 'false' ? false : (process.env.MC_VERSION || '1.20.4'),
+  MC_VERSION: VersionResolver.normalizeVersion(process.env.MC_VERSION),
   BOT_OWNER: process.env.BOT_OWNER || 'DeinSpielerName',
 
+  // Survival & Resource Management
+  SURVIVAL_AUTO_PROCUREMENT: parseBoolean(process.env.SURVIVAL_AUTO_PROCUREMENT, true),
+  SURVIVAL_STORAGE_SCAN_RADIUS: parseInteger(process.env.SURVIVAL_STORAGE_SCAN_RADIUS, 32),
+  SURVIVAL_AUTO_CRAFTING: parseBoolean(process.env.SURVIVAL_AUTO_CRAFTING, true),
+  SURVIVAL_AUTO_HARVESTING: parseBoolean(process.env.SURVIVAL_AUTO_HARVESTING, false),
+  SURVIVAL_STRICT_MATERIALS: parseBoolean(process.env.SURVIVAL_STRICT_MATERIALS, false),
+  SURVIVAL_CONTAINER_TIMEOUT_MS: parseInteger(process.env.SURVIVAL_CONTAINER_TIMEOUT_MS, 4000),
+  SURVIVAL_CONTAINER_BLACKLIST_MS: parseInteger(process.env.SURVIVAL_CONTAINER_BLACKLIST_MS, 60000),
+  SURVIVAL_THREAT_RADIUS: parseInteger(process.env.SURVIVAL_THREAT_RADIUS, 12),
+  SURVIVAL_CRITICAL_HEALTH: parseInteger(process.env.SURVIVAL_CRITICAL_HEALTH, 8),
+  SURVIVAL_RETREAT_DISTANCE: parseInteger(process.env.SURVIVAL_RETREAT_DISTANCE, 15),
+  SURVIVAL_ATTACK_COOLDOWN_MS: parseInteger(process.env.SURVIVAL_ATTACK_COOLDOWN_MS, 625),
+  BED_SEARCH_RADIUS: parseInteger(process.env.BED_SEARCH_RADIUS, 32),
+  SLEEP_DISCONNECT_ON_NO_BED: parseBoolean(process.env.SLEEP_DISCONNECT_ON_NO_BED, true),
+  SLEEP_RECONNECT_DELAY_SEC: parseInteger(process.env.SLEEP_RECONNECT_DELAY_SEC, 25),
+  SURVIVAL_SCAFFOLDING_ENABLED: parseBoolean(process.env.SURVIVAL_SCAFFOLDING_ENABLED, true),
+  SURVIVAL_SCAFFOLD_BLOCKS: process.env.SURVIVAL_SCAFFOLD_BLOCKS || 'scaffolding,dirt,coarse_dirt,cobblestone,netherrack',
+  SURVIVAL_MAX_REACH: parseFloat(process.env.SURVIVAL_MAX_REACH) || 3.8,
+
   // Execution & Server Protection
-  BUILD_EXECUTION_MODE: process.env.BUILD_EXECUTION_MODE || 'hybrid_visual', // 'hybrid_visual' | 'rcon_visual' | 'pure_physical'
+  BUILD_EXECUTION_MODE: process.env.BUILD_EXECUTION_MODE || 'auto', // 'auto' | 'hybrid_visual' | 'rcon_visual' | 'pure_physical'
   ENABLE_GREEDY_FILL_OPTIMIZATION: parseBoolean(process.env.ENABLE_GREEDY_FILL_OPTIMIZATION, true),
   BUILD_OPERATIONS_PER_SECOND: parseInteger(process.env.BUILD_OPERATIONS_PER_SECOND, 12),
   MAX_BUILD_VOLUME_DIMENSION: parseInteger(process.env.MAX_BUILD_VOLUME_DIMENSION, 64),
@@ -82,6 +102,11 @@ export const settings = {
   SILICONFLOW_API_KEYS: parseList(process.env.SILICONFLOW_API_KEYS),
   SILICONFLOW_MODEL: process.env.SILICONFLOW_MODEL || 'Qwen/Qwen3-8B',
 
+  // --- GITHUB MODELS (RFC 8628 Device Flow & GITHUB_TOKEN) ---
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || '',
+  GITHUB_FAST_MODEL: process.env.GITHUB_FAST_MODEL || 'openai/gpt-4o-mini',
+  GITHUB_ARCHITECT_MODEL: process.env.GITHUB_ARCHITECT_MODEL || 'openai/gpt-4o',
+
   // Zero-Key Notfall-Gateways (Funktioniert sofort out-of-the-box ohne API-Key)
   ENABLE_ZERO_KEY_FALLBACK: parseBoolean(process.env.ENABLE_ZERO_KEY_FALLBACK, true),
   KILO_GATEWAY_URL: process.env.KILO_GATEWAY_URL || 'https://api.kilo.ai/api/gateway',
@@ -98,15 +123,16 @@ export const settings = {
 
 export function validateSettings() {
   const issues = [];
-  if (!['hybrid_visual', 'rcon_visual', 'pure_physical'].includes(settings.BUILD_EXECUTION_MODE)) {
-    issues.push(`Ungültiger BUILD_EXECUTION_MODE: ${settings.BUILD_EXECUTION_MODE}. Erlaubt: hybrid_visual, rcon_visual, pure_physical`);
+  if (!['auto', 'hybrid_visual', 'rcon_visual', 'pure_physical'].includes(settings.BUILD_EXECUTION_MODE)) {
+    issues.push(`Ungültiger BUILD_EXECUTION_MODE: ${settings.BUILD_EXECUTION_MODE}. Erlaubt: auto, hybrid_visual, rcon_visual, pure_physical`);
   }
   if (settings.BUILD_EXECUTION_MODE === 'rcon_visual' && !settings.RCON_PASSWORD) {
     issues.push('BUILD_EXECUTION_MODE ist "rcon_visual", aber RCON_PASSWORD ist leer.');
   }
 
   // Zähle konfigurierte API-Schlüssel über alle Anbieter
-  const keyCount = settings.CEREBRAS_API_KEYS.length +
+  const keyCount = (settings.GITHUB_TOKEN ? 1 : 0) +
+                   settings.CEREBRAS_API_KEYS.length +
                    settings.GROQ_API_KEYS.length +
                    settings.MISTRAL_API_KEYS.length +
                    settings.CODESTRAL_API_KEYS.length +

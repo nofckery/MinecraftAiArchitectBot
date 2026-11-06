@@ -131,7 +131,7 @@ export function mirrorProperties(properties = {}, axis = 'x') {
     const tempNorth = mirrored.north;
     const tempSouth = mirrored.south;
     if (tempSouth !== undefined) mirrored.north = tempSouth; else delete mirrored.north;
-    if (tempNorth !== undefined) mirrored.south = tempSouth; else delete mirrored.south;
+    if (tempNorth !== undefined) mirrored.south = tempNorth; else delete mirrored.south;
   }
   if (mirrored.rotation !== undefined) {
     const rot = parseInt(mirrored.rotation, 10);

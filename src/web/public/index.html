@@ -17,18 +17,38 @@
       <span class="subtitle">AUTONOMOUS MINECRAFT CAD & AGENTIC BUILDER</span>
     </div>
     <div class="header-right">
-      <div class="telemetry-pill">
-        <span class="pill-label">LLM:</span>
-        <span id="pillLlmProvider" class="pill-val">Cerebras / Groq</span>
+      <!-- Master Bot Power Steuerung (Start / Stopp) -->
+      <div class="bot-master-control-group">
+        <button id="btnMasterBotControl" class="btn-bot-master start" title="Bot auf dem Server starten oder trennen">
+          <span class="btn-bot-icon">▶</span>
+          <span id="btnMasterBotText">Bot Starten</span>
+        </button>
+        <div id="pillBotStatusBadge" class="bot-power-badge stopped" title="Verbindungsstatus des Bots">
+          <span class="bot-power-dot"></span>
+          <span id="txtBotStatusBadge">Gestoppt</span>
+        </div>
       </div>
+
+      <div id="pillLlmProvider" class="telemetry-pill interactive" role="button" tabindex="0" title="Modell-Cockpit öffnen">
+        <span class="pill-label">LLM:</span>
+        <span id="txtActiveLlmName" class="pill-val">Cerebras / Groq</span>
+        <span id="pillLlmLatency" class="pill-latency-badge good">42ms</span>
+        <span class="pill-gear-icon" aria-hidden="true">⚙️</span>
+      </div>
+      <button id="btnOpenModelSettings" class="btn-micro" title="Modell-Cockpit öffnen">⚙️ Modelle</button>
       <div class="telemetry-pill">
         <span class="pill-label">MODE:</span>
-        <span id="pillExecMode" class="pill-val">hybrid_visual</span>
+        <span id="pillExecMode" class="pill-val">auto</span>
+      </div>
+      <div class="telemetry-pill">
+        <span class="pill-label">RECHTE:</span>
+        <span id="pillServerRights" class="pill-val">Prüfe...</span>
       </div>
       <div id="connectionStatusBadge" class="status-badge connecting">
         <span class="status-dot"></span>
         <span id="connectionStatusText">Verbinde WebSocket...</span>
       </div>
+      <button id="btnOpenSetupModal" class="btn-micro" title="Setup-Assistent (Onboarding) öffnen">🚀 Setup</button>
     </div>
   </header>
 
@@ -36,46 +56,179 @@
     <!-- SPALTE 1: Live-Welt & 2D-Bauplatz-Planer -->
     <section class="column col-left">
       <div class="panel-header">
-        <div class="tab-buttons">
-          <button id="tabBtnViewer" class="tab-btn active" data-tab="tab-viewer">🎥 Live 3D Bot-Cam</button>
-          <button id="tabBtnMap" class="tab-btn" data-tab="tab-map">🗺️ 2D-Grundstücks-Raster</button>
-          <button id="tabBtnSchematics" class="tab-btn" data-tab="tab-schematics">📦 Schematics & Import</button>
+        <div class="tab-buttons" role="tablist" aria-label="Primäre Modulnavigation">
+          <button id="tabBtnViewer" class="tab-btn active" data-tab="tab-viewer" role="tab" aria-selected="true" aria-controls="tab-viewer">🎥 Live 3D Bot-Cam</button>
+          <button id="tabBtnMap" class="tab-btn" data-tab="tab-map" role="tab" aria-selected="false" aria-controls="tab-map">🗺️ 2D-Grundstücks-Raster</button>
+          <button id="tabBtnSchematics" class="tab-btn" data-tab="tab-schematics" role="tab" aria-selected="false" aria-controls="tab-schematics">📦 Schematics & Import</button>
+          <button id="tabBtnSettings" class="tab-btn" data-tab="tab-settings" role="tab" aria-selected="false" aria-controls="tab-settings">⚙️ Einstellungen</button>
         </div>
       </div>
 
       <div class="panel-body">
-        <!-- TAB 1: Prismarine Viewer iframe -->
-        <div id="tab-viewer" class="tab-pane active">
-          <div class="viewer-wrapper">
-            <iframe id="viewerFrame" src="about:blank" title="Prismarine Viewer"></iframe>
-            <div class="viewer-overlay-bar">
+        <!-- TAB 1: Prismarine Viewer iframe & Gamemode Cockpit -->
+        <div id="tab-viewer" class="tab-pane active" role="tabpanel" aria-labelledby="tabBtnViewer">
+          <div class="viewer-wrapper" id="viewerWrapper">
+            <!-- Stream Iframe (allow fullscreen & pointer-lock permissions) -->
+            <iframe id="viewerFrame" src="about:blank" title="Prismarine Viewer" allow="fullscreen; pointer-lock" allowfullscreen></iframe>
+
+            <!-- Default Viewer Overlay Bar (always accessible in standard mode) -->
+            <div class="viewer-overlay-bar" id="viewerOverlayBar">
               <span class="live-tag">● LIVE CAM</span>
-              <button id="btnReloadViewer" class="btn-micro" title="Viewer neu laden">↺ Neu laden</button>
+              <button id="btnReloadViewer" class="btn-micro" title="Viewer neu laden" type="button">↺ Neu laden</button>
+              <button id="btnFullscreenViewer" class="btn-micro" title="Vollbildmodus aktivieren" type="button">⛶ Vollbild</button>
+              <button id="btnPopoutViewer" class="btn-micro btn-popout" title="Kamera in separatem Fenster/Tab öffnen" type="button">↗ Auslagern</button>
+              <button id="btnToggleGamemode" class="btn-micro btn-gamemode" title="Gamemode starten: Vollbild & Maussteuerung (Pointer Lock)" type="button">🎮 Gamemode</button>
+              <button id="btnPopoutGamemode" class="btn-micro btn-popout" title="Gamemode in separatem Fenster/Tab öffnen" type="button">↗ Popout</button>
+            </div>
+
+            <!-- Gamemode HUD & Input Capture Overlay (active during Gamemode) -->
+            <div id="gamemodeHudOverlay" class="gamemode-hud-overlay hidden">
+              <!-- Transparent Fullscreen Pointer-Lock & Event Capture Layer -->
+              <div id="gamemodeInputCapture" class="gamemode-input-capture" tabindex="0"></div>
+
+              <!-- Click-To-Lock Banner (shown when pointer lock is released while gamemode is active) -->
+              <div id="gamemodeLockBanner" class="gamemode-lock-banner hidden">
+                <div class="lock-banner-card">
+                  <span class="lock-banner-icon">🎯</span>
+                  <div class="lock-banner-title">MAUSSTEUERUNG EINFANGEN</div>
+                  <p class="lock-banner-desc">Klicke in das Fenster, um die Minecraft-Blicksteuerung zu aktivieren.</p>
+                  <span class="lock-banner-shortcut">Tipp: <strong>[ESC]</strong> beendet den Gamemode und parkt den Bot sicher im Standby.</span>
+                </div>
+              </div>
+
+              <!-- Top HUD: Status Pill & Exit Button -->
+              <div class="gamemode-hud-top">
+                <div class="gamemode-status-pill">
+                  <span class="gamemode-live-indicator">●</span>
+                  <span class="gamemode-label">MANUAL COCKPIT</span>
+                  <span id="gamemodeCoordinates" class="gamemode-coords">X: 0.0 Y: 0.0 Z: 0.0</span>
+                </div>
+                <button id="btnExitGamemode" class="btn-gamemode-exit" title="Gamemode beenden und Bot in Standby parken (ESC)" type="button">✕ Beenden (ESC)</button>
+              </div>
+
+              <!-- Center HUD: Reticle & Raycast Inspection -->
+              <div class="gamemode-hud-center">
+                <!-- Central Crosshair (difference blend mode) -->
+                <div id="gamemodeCrosshair" class="gamemode-crosshair">
+                  <div class="crosshair-reticle"></div>
+                </div>
+
+                <!-- Raycast Block/Entity Inspection Tooltip -->
+                <div id="gamemodeRaycastTooltip" class="gamemode-raycast-tooltip hidden">
+                  <div class="raycast-header">
+                    <span id="raycastTargetType" class="raycast-type">Block: minecraft:stone</span>
+                    <span id="raycastTargetDistance" class="raycast-distance">3.2m</span>
+                  </div>
+                  <div id="raycastTargetCoords" class="raycast-coords">X: 0 Y: 0 Z: 0</div>
+                </div>
+              </div>
+
+              <!-- Bottom HUD: Vitals & 9-Slot Hotbar -->
+              <div class="gamemode-hud-bottom">
+                <!-- Vitals Bar (Health & Food) -->
+                <div class="gamemode-vitals-container">
+                  <div class="vitals-half health-side" title="Gesundheit">
+                    <div id="hudHeartsContainer" class="hearts-row"></div>
+                    <span id="hudHealthValue" class="vitals-numeric">20 / 20</span>
+                  </div>
+                  <div class="vitals-half food-side" title="Hunger">
+                    <span id="hudFoodValue" class="vitals-numeric">20 / 20</span>
+                    <div id="hudFoodContainer" class="food-row"></div>
+                  </div>
+                </div>
+
+                <!-- Selected Item Label (fades in on slot change) -->
+                <div id="hotbarSelectedItemLabel" class="hotbar-item-toast"></div>
+
+                <!-- 9-Slot Minecraft Hotbar -->
+                <div id="gamemodeHotbar" class="gamemode-hotbar" role="toolbar" aria-label="Minecraft Quickbar Hotbar">
+                  <div class="hotbar-slot active" data-slot="0" id="hotbarSlot0">
+                    <span class="slot-num">1</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="1" id="hotbarSlot1">
+                    <span class="slot-num">2</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="2" id="hotbarSlot2">
+                    <span class="slot-num">3</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="3" id="hotbarSlot3">
+                    <span class="slot-num">4</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="4" id="hotbarSlot4">
+                    <span class="slot-num">5</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="5" id="hotbarSlot5">
+                    <span class="slot-num">6</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="6" id="hotbarSlot6">
+                    <span class="slot-num">7</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="7" id="hotbarSlot7">
+                    <span class="slot-num">8</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                  <div class="hotbar-slot" data-slot="8" id="hotbarSlot8">
+                    <span class="slot-num">9</span>
+                    <span class="slot-icon"></span>
+                    <span class="slot-count"></span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+
+          <!-- Detached Popout Placeholder (initially hidden, shown when camera/popout window is open) -->
+          <div id="viewerDetachedPlaceholder" class="viewer-detached-placeholder hidden">
+            <div class="detached-card">
+              <div class="detached-icon">🖥️</div>
+              <div class="detached-title">● KAMERA AUSGELAGERT (MULTI-MONITOR)</div>
+              <p class="detached-desc">Die 3D-Kamera läuft in einem separaten Multi-Monitor-Fenster. Der eingebettete Stream wurde zur Schonung von WebGL- und Netzwerkressourcen pausiert.</p>
+              <div class="detached-actions">
+                <button id="btnReembedViewer" class="btn btn-primary btn-sm" type="button">⤺ Im Cockpit wiedereinbetten</button>
+                <button id="btnRefocusPopout" class="btn btn-secondary btn-sm" type="button">⧉ Fenster fokussieren</button>
+                <button id="btnReattachGamemode" class="btn btn-primary btn-sm hidden" type="button">⤺ Im Cockpit wiedereinbetten</button>
+              </div>
+            </div>
+          </div>
+
           <div class="viewer-hint">
             Prismarine-Viewer Stream auf Port <span id="lblViewerPort">3081</span>.
           </div>
         </div>
 
         <!-- TAB 2: Interaktiver 2D-Grundstücks-Selektor -->
-        <div id="tab-map" class="tab-pane">
+        <div id="tab-map" class="tab-pane" role="tabpanel" aria-labelledby="tabBtnMap">
           <div class="map-controls">
             <div class="facing-selector">
               <span class="control-label">Frontrichtung:</span>
               <div class="btn-group">
-                <button class="btn-facing active" data-facing="north">N ▲</button>
-                <button class="btn-facing" data-facing="east">O ▶</button>
-                <button class="btn-facing" data-facing="south">S ▼</button>
-                <button class="btn-facing" data-facing="west">W ◀</button>
+                <button class="btn-facing active" data-facing="north" aria-label="Blickrichtung Norden">N ▲</button>
+                <button class="btn-facing" data-facing="east" aria-label="Blickrichtung Osten">O ▶</button>
+                <button class="btn-facing" data-facing="south" aria-label="Blickrichtung Süden">S ▼</button>
+                <button class="btn-facing" data-facing="west" aria-label="Blickrichtung Westen">W ◀</button>
               </div>
             </div>
 
             <div class="map-actions">
-              <span id="mapSimulatedNotice" class="badge-sub hidden" style="color:#f59e0b; margin-right:4px;">⚠️ Offline-Simulation</span>
+              <span id="mapSimulatedNotice" class="badge-sub notice-warning hidden">⚠️ Offline-Simulation</span>
               <span id="selectionDimensions" class="selection-badge">Kein Bereich markiert</span>
               <button id="btnApplyBuildBox" class="btn btn-primary btn-sm" disabled>Bauplatz fixieren</button>
-              <button id="btnRefreshMap" class="btn btn-secondary btn-sm" title="Karte aktualisieren">↺ Raster</button>
+              <button id="btnRefreshMap" class="btn btn-secondary btn-sm" title="Karte aktualisieren" aria-label="2D-Grundstücksraster aktualisieren">↺ Raster</button>
             </div>
           </div>
 
@@ -95,7 +248,7 @@
         </div>
 
         <!-- TAB 3: Universal Schematic Importer & Library -->
-        <div id="tab-schematics" class="tab-pane">
+        <div id="tab-schematics" class="tab-pane" role="tabpanel" aria-labelledby="tabBtnSchematics">
           <div class="schematics-pane-content">
             <!-- Drag & Drop Zone -->
             <div id="dropZone" class="drop-zone">
@@ -103,14 +256,14 @@
               <p class="drop-zone-text"><strong>Schematic-Datei hier ablegen</strong></p>
               <span class="drop-zone-sub">(.schem, .litematic, .nbt, .schematic)</span>
               <button id="btnBrowseFile" class="btn btn-secondary btn-sm mt-2" type="button">Datei auswählen</button>
-              <input type="file" id="fileInput" accept=".schem,.litematic,.nbt,.schematic" style="display:none">
+              <input type="file" id="fileInput" class="file-input-hidden" accept=".schem,.litematic,.nbt,.schematic" aria-label="Schematic-Datei vom Computer hochladen">
             </div>
 
             <!-- URL Importer -->
             <div class="url-importer-box">
               <span class="control-label">Von Direkt-URL importieren:</span>
               <div class="input-row mt-1">
-                <input type="url" id="txtSchemUrl" placeholder="https://example.com/build.schem">
+                <input type="url" id="txtSchemUrl" placeholder="https://example.com/build.schem" aria-label="Direkte Web-URL der Schematic-Datei eingeben">
                 <button id="btnImportUrl" class="btn btn-secondary btn-sm" type="button">Laden</button>
               </div>
             </div>
@@ -119,12 +272,12 @@
             <div class="server-clone-box">
               <span class="control-label">Server-Bereich in 3D-Editor klonen:</span>
               <div class="clone-coords-grid mt-1">
-                <input type="number" id="cloneMinX" placeholder="minX" value="0">
-                <input type="number" id="cloneMinY" placeholder="minY" value="64">
-                <input type="number" id="cloneMinZ" placeholder="minZ" value="0">
-                <input type="number" id="cloneMaxX" placeholder="maxX" value="15">
-                <input type="number" id="cloneMaxY" placeholder="maxY" value="75">
-                <input type="number" id="cloneMaxZ" placeholder="maxZ" value="15">
+                <input type="number" id="cloneMinX" placeholder="minX" value="0" aria-label="Minimale X-Koordinate für Server-Klon">
+                <input type="number" id="cloneMinY" placeholder="minY" value="64" aria-label="Minimale Y-Koordinate für Server-Klon">
+                <input type="number" id="cloneMinZ" placeholder="minZ" value="0" aria-label="Minimale Z-Koordinate für Server-Klon">
+                <input type="number" id="cloneMaxX" placeholder="maxX" value="15" aria-label="Maximale X-Koordinate für Server-Klon">
+                <input type="number" id="cloneMaxY" placeholder="maxY" value="75" aria-label="Maximale Y-Koordinate für Server-Klon">
+                <input type="number" id="cloneMaxZ" placeholder="maxZ" value="15" aria-label="Maximale Z-Koordinate für Server-Klon">
               </div>
               <button id="btnCloneServerRegion" class="btn btn-primary btn-sm mt-1 w-full" type="button">
                 ⤺ Markierten Server-Bereich in 3D-Editor klonen
@@ -135,12 +288,241 @@
             <div class="library-box">
               <div class="library-header">
                 <span class="control-label">Lokale Schematics (data/schematics/):</span>
-                <button id="btnRefreshSchematics" class="btn-micro" title="Aktualisieren">↺</button>
+                <button id="btnRefreshSchematics" class="btn-micro" title="Aktualisieren" aria-label="Lokale Schematic-Dateien aktualisieren">↺</button>
               </div>
               <div id="schematicFilesList" class="schematic-files-list">
                 <span class="empty-hint">Lade Dateien...</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: Konfiguration & .env-Einstellungen -->
+        <div id="tab-settings" class="tab-pane" role="tabpanel" aria-labelledby="tabBtnSettings">
+          <div class="settings-pane-content">
+            <!-- Status Header Banner -->
+            <div class="settings-status-card">
+              <div class="settings-status-row">
+                <span id="settingsEnvBadge" class="badge-sub">Prüfe .env...</span>
+                <span id="settingsRightsBadge" class="badge-sub">Rechte: Auto</span>
+              </div>
+              <button id="btnLaunchOnboarding" class="btn btn-secondary btn-sm mt-1" type="button">
+                🚀 Setup-Assistent (Onboarding) starten
+              </button>
+            </div>
+
+            <form id="settingsForm" class="settings-form">
+              <!-- Sektion 1: Spieler & Bot-Account -->
+              <div class="settings-section">
+                <h4 class="settings-section-title">👤 Minecraft-Account & Besitzer</h4>
+                <div class="form-group">
+                  <label for="cfgBotOwner">Dein Spielername (BOT_OWNER):</label>
+                  <input type="text" id="cfgBotOwner" name="BOT_OWNER" placeholder="DeinSpielerName">
+                  <small class="form-hint">Der Bot pausiert automatisch bei Session-Handoff, wenn du selbst joinst.</small>
+                </div>
+                <div class="form-row">
+                  <div class="form-group flex-1">
+                    <label for="cfgMcUsername">Bot-Username (MC_USERNAME):</label>
+                    <input type="text" id="cfgMcUsername" name="MC_USERNAME" placeholder="BaumeisterKI">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgMcAuth">Auth-Typ (MC_AUTH):</label>
+                    <select id="cfgMcAuth" name="MC_AUTH">
+                      <option value="offline">offline (Cracked / LAN)</option>
+                      <option value="microsoft">microsoft (Offiziell)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sektion 2: Server-Verbindung & Version -->
+              <div class="settings-section">
+                <h4 class="settings-section-title">🌐 Minecraft-Server</h4>
+                <div class="form-row">
+                  <div class="form-group flex-2">
+                    <label for="cfgMcHost">Server-Adresse (MC_HOST):</label>
+                    <input type="text" id="cfgMcHost" name="MC_HOST" placeholder="127.0.0.1">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgMcPort">Port (MC_PORT):</label>
+                    <input type="number" id="cfgMcPort" name="MC_PORT" value="25565" min="1" max="65535">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="cfgMcVersion">Version (MC_VERSION):</label>
+                  <input type="text" id="cfgMcVersion" name="MC_VERSION" placeholder="auto (oder 26.3, 1.20.4)">
+                  <div class="version-chips mt-1" id="cfgMcVersionChips">
+                    <button type="button" class="chip-sm active" data-ver="auto">auto (Empfohlen)</button>
+                    <button type="button" class="chip-sm" data-ver="26.3">26.3 (SOTA)</button>
+                    <button type="button" class="chip-sm" data-ver="1.21.4">1.21.4</button>
+                    <button type="button" class="chip-sm" data-ver="1.21.1">1.21.1</button>
+                    <button type="button" class="chip-sm" data-ver="1.20.4">1.20.4</button>
+                    <button type="button" class="chip-sm" data-ver="1.20.1">1.20.1</button>
+                  </div>
+                  <small class="form-hint">'auto' für automatische Erkennung, oder feste Version wie '26.3'.</small>
+                </div>
+                <div class="form-checkbox mt-2">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgReconnectBot" name="reconnectBot" checked>
+                    <span class="checkmark"></span>
+                    Bot sofort mit neuer Version neu verbinden
+                  </label>
+                </div>
+              </div>
+
+              <!-- Sektion 3: Server-Rechte & Ausführungsmodus -->
+              <div class="settings-section">
+                <h4 class="settings-section-title">⚖️ Server-Rechte & Ausführungsmodus</h4>
+                <div class="form-group">
+                  <label for="cfgBuildExecutionMode">Ausführungs-Modus (BUILD_EXECUTION_MODE):</label>
+                  <select id="cfgBuildExecutionMode" name="BUILD_EXECUTION_MODE">
+                    <option value="auto">🌟 auto (Dynamisch nach Server-Rechten richten)</option>
+                    <option value="pure_physical">🪓 pure_physical (Survival ohne Cheats / mit Kisten)</option>
+                    <option value="hybrid_visual">⚡ hybrid_visual (Kreativ / OP /setblock & /fill)</option>
+                    <option value="rcon_visual">📡 rcon_visual (RCON High-Speed)</option>
+                  </select>
+                  <small class="form-hint" id="cfgModeHint">
+                    Im 'auto'-Modus erkennt der Bot automatisch seine OP-Rechte: Mit OP nutzt er High-Speed /setblock, ohne OP echtes Survival mit Kisten-Beschaffung.
+                  </small>
+                </div>
+
+                <!-- RCON Untergruppe -->
+                <div id="rconConfigGroup" class="rcon-config-group hidden">
+                  <div class="form-row">
+                    <div class="form-group flex-2">
+                      <label for="cfgRconHost">RCON Host:</label>
+                      <input type="text" id="cfgRconHost" name="RCON_HOST" placeholder="127.0.0.1">
+                    </div>
+                    <div class="form-group flex-1">
+                      <label for="cfgRconPort">RCON Port:</label>
+                      <input type="number" id="cfgRconPort" name="RCON_PORT" value="25575">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label for="cfgRconPassword">RCON Passwort:</label>
+                    <input type="password" id="cfgRconPassword" name="RCON_PASSWORD" placeholder="Passwort">
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group flex-1">
+                    <label for="cfgBuildOpsPerSec">Operationen/Sekunde:</label>
+                    <input type="number" id="cfgBuildOpsPerSec" name="BUILD_OPERATIONS_PER_SECOND" value="12" min="1" max="100">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgMaxDimension">Max. Bauvolumen (X/Y/Z):</label>
+                    <input type="number" id="cfgMaxDimension" name="MAX_BUILD_VOLUME_DIMENSION" value="64" min="8" max="256">
+                  </div>
+                </div>
+                <div class="form-checkbox">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgGreedyOptimization" name="ENABLE_GREEDY_FILL_OPTIMIZATION">
+                    <span class="checkmark"></span>
+                    Greedy-Fill Kompression (/fill Optimierung) aktivieren
+                  </label>
+                </div>
+              </div>
+
+              <!-- Sektion 4: Survival & Kistenlogistik -->
+              <div class="settings-section">
+                <h4 class="settings-section-title">📦 Survival-Logistik & Kisten</h4>
+                <div class="form-checkbox">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgAutoProcurement" name="SURVIVAL_AUTO_PROCUREMENT">
+                    <span class="checkmark"></span>
+                    Automatische Material-Suche in Kisten vor Baubeginn
+                  </label>
+                </div>
+                <div class="form-checkbox">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgStrictMaterials" name="SURVIVAL_STRICT_MATERIALS">
+                    <span class="checkmark"></span>
+                    Strikte Materialien (Baustopp bei Materialmangel)
+                  </label>
+                </div>
+                <div class="form-checkbox">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgAutoHarvesting" name="SURVIVAL_AUTO_HARVESTING">
+                    <span class="checkmark"></span>
+                    Autonomes Holz-/Stein-Farming erlauben
+                  </label>
+                </div>
+                <div class="form-row mt-1">
+                  <div class="form-group flex-1">
+                    <label for="cfgScanRadius">Kisten-Suchradius:</label>
+                    <input type="number" id="cfgScanRadius" name="SURVIVAL_STORAGE_SCAN_RADIUS" value="32" min="4" max="128">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgContainerTimeout">Kisten-Timeout (ms):</label>
+                    <input type="number" id="cfgContainerTimeout" name="SURVIVAL_CONTAINER_TIMEOUT_MS" value="4000" min="500" max="30000">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgContainerBlacklist">Kisten-Blacklist (ms):</label>
+                    <input type="number" id="cfgContainerBlacklist" name="SURVIVAL_CONTAINER_BLACKLIST_MS" value="60000" min="1000" max="600000">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sektion 5: Mob-Gefahrenabwehr & Schlaf-Management -->
+              <div class="settings-section">
+                <h4 class="settings-section-title">🛡️ Gefahrenabwehr & Schlaf-Management</h4>
+                <div class="form-row">
+                  <div class="form-group flex-1">
+                    <label for="cfgThreatRadius">Mob-Warnradius:</label>
+                    <input type="number" id="cfgThreatRadius" name="SURVIVAL_THREAT_RADIUS" value="12" min="3" max="32">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgCritHealth">Kritische HP (Rückzug):</label>
+                    <input type="number" id="cfgCritHealth" name="SURVIVAL_CRITICAL_HEALTH" value="8" min="2" max="18">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group flex-1">
+                    <label for="cfgRetreatDistance">Rückzugsdistanz (Blöcke):</label>
+                    <input type="number" id="cfgRetreatDistance" name="SURVIVAL_RETREAT_DISTANCE" value="15" min="5" max="50">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgAttackCooldown">Angriffs-Cooldown (ms):</label>
+                    <input type="number" id="cfgAttackCooldown" name="SURVIVAL_ATTACK_COOLDOWN_MS" value="625" min="100" max="2000">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group flex-1">
+                    <label for="cfgBedRadius">Betten-Suchradius:</label>
+                    <input type="number" id="cfgBedRadius" name="BED_SEARCH_RADIUS" value="32" min="4" max="128">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="cfgReconnectDelay">Schlaf-Reconnect (s):</label>
+                    <input type="number" id="cfgReconnectDelay" name="SLEEP_RECONNECT_DELAY_SEC" value="25" min="5" max="300">
+                  </div>
+                </div>
+                <div class="form-checkbox">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgSleepDisconnect" name="SLEEP_DISCONNECT_ON_NO_BED">
+                    <span class="checkmark"></span>
+                    Bei Nacht ohne freies Bett Server verlassen (blockiert andere nicht)
+                  </label>
+                </div>
+                <div class="form-checkbox">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgSingleAccountHandoff" name="SINGLE_ACCOUNT_HANDOFF_MODE">
+                    <span class="checkmark"></span>
+                    1-Account Session Handoff (Bot pausiert für dich)
+                  </label>
+                </div>
+              </div>
+
+              <!-- Settings Action Bar -->
+              <div class="settings-actions-bar">
+                <button type="submit" id="btnSaveSettings" class="btn btn-primary">
+                  💾 Einstellungen in .env speichern
+                </button>
+                <button type="button" id="btnReconnectBot" class="btn btn-secondary">
+                  ⚡ Bot neu verbinden
+                </button>
+                <span id="settingsSaveFeedback" class="settings-feedback"></span>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -164,32 +546,32 @@
           <div class="toolbar-section">
             <span class="toolbar-label">Werkzeuge:</span>
             <div class="btn-group">
-              <button id="toolOrbit" class="tool-btn active" title="Kamera / Orbit">🎥 Orbit</button>
-              <button id="toolSelectBox" class="tool-btn" title="3D-Bereich markieren (Selection Box)">🎯 Bereich</button>
-              <button id="toolBrush" class="tool-btn" title="Voxel-Pinsel (Setzen)">🖌️ Pinsel</button>
-              <button id="toolEraser" class="tool-btn" title="Radiergummi (Löschen)">🧹 Radierer</button>
-              <button id="toolEyedropper" class="tool-btn" title="Pipette (Block-Picker)">🧪 Pipette</button>
+              <button id="toolOrbit" class="tool-btn active" title="Kamera / Orbit" aria-label="Kamera-Orbit Werkzeug">🎥 Orbit</button>
+              <button id="toolSelectBox" class="tool-btn" title="3D-Bereich markieren (Selection Box)" aria-label="3D-Bereichsauswahl">🎯 Bereich</button>
+              <button id="toolBrush" class="tool-btn" title="Voxel-Pinsel (Setzen)" aria-label="Voxel-Pinsel">🖌️ Pinsel</button>
+              <button id="toolEraser" class="tool-btn" title="Radiergummi (Löschen)" aria-label="Voxel-Radierer">🧹 Radierer</button>
+              <button id="toolEyedropper" class="tool-btn" title="Pipette (Block-Picker)" aria-label="Block-Pipette">🧪 Pipette</button>
             </div>
           </div>
 
           <div class="toolbar-section">
             <span class="toolbar-label">Pinsel:</span>
-            <input type="text" id="txtBrushBlock" value="stone_bricks" class="brush-input" title="Blockname für Pinsel">
+            <input type="text" id="txtBrushBlock" value="stone_bricks" class="brush-input" title="Blockname für Pinsel" aria-label="Minecraft Block-Name für den Voxel-Pinsel">
           </div>
 
           <div class="toolbar-section">
             <span class="toolbar-label">CAD-Transform:</span>
             <div class="btn-group">
-              <button id="btnMirrorX" class="tool-btn" title="Spiegeln X">🪞 X</button>
-              <button id="btnMirrorZ" class="tool-btn" title="Spiegeln Z">🪞 Z</button>
-              <button id="btnRotate90" class="tool-btn" title="90° Drehen">↻ 90°</button>
-              <button id="btnShiftYUp" class="tool-btn" title="Y+1 (Anheben)">▲ Y+1</button>
-              <button id="btnShiftYDown" class="tool-btn" title="Y-1 (Absenken)">▼ Y-1</button>
+              <button id="btnMirrorX" class="tool-btn" title="Spiegeln X" aria-label="Bauplan an X-Achse spiegeln">🪞 X</button>
+              <button id="btnMirrorZ" class="tool-btn" title="Spiegeln Z" aria-label="Bauplan an Z-Achse spiegeln">🪞 Z</button>
+              <button id="btnRotate90" class="tool-btn" title="90° Drehen" aria-label="Bauplan um 90 Grad drehen">↻ 90°</button>
+              <button id="btnShiftYUp" class="tool-btn" title="Y+1 (Anheben)" aria-label="Bauplan um 1 Block nach oben verschieben">▲ Y+1</button>
+              <button id="btnShiftYDown" class="tool-btn" title="Y-1 (Absenken)" aria-label="Bauplan um 1 Block nach unten verschieben">▼ Y-1</button>
             </div>
           </div>
 
           <div class="toolbar-section">
-            <button id="btnToggleXray" class="tool-btn btn-xray" title="Server-Terrain & Kollisionen einblenden">👁️ X-Ray</button>
+            <button id="btnToggleXray" class="tool-btn btn-xray" title="Server-Terrain & Kollisionen einblenden" aria-label="Server-Terrain und Kollisionen als X-Ray einblenden">👁️ X-Ray</button>
           </div>
         </div>
 
@@ -216,7 +598,7 @@
           <div class="slicer-header">
             <label for="ySliceSlider">Schnitt-Höhe Y: 1 bis Max</label>
             <span id="ySliceValue" class="slicer-val">Schnitt-Höhe Y: 1 bis Max</span>
-            <button id="btnResetSlicer" class="btn-micro">Reset</button>
+            <button id="btnResetSlicer" class="btn-micro" aria-label="Y-Schnitt-Höhe auf Maximum zurücksetzen">Reset</button>
           </div>
           <input type="range" id="ySliceSlider" min="1" max="36" value="36" class="slider" disabled>
         </div>
@@ -270,9 +652,14 @@
           <p id="handoffStateDesc" class="handoff-desc">
             Bot steuert den Account. Wenn du selbst joinst, pausiert er automatisch.
           </p>
-          <button id="btnToggleHandoff" class="btn btn-handoff">
-            Account freigeben / Bot pausieren
-          </button>
+          <div class="handoff-actions-grid">
+            <button id="btnToggleHandoff" class="btn btn-handoff">
+              Account freigeben / Bot pausieren
+            </button>
+            <button id="btnSidebarBotPower" class="btn btn-bot-power stop" title="Bot trennen oder starten">
+              ⏹ Bot Stoppen
+            </button>
+          </div>
         </div>
       </div>
 
@@ -304,7 +691,7 @@
             <span id="lblProgressPercent">0%</span>
           </div>
           <div class="progress-bar-track">
-            <div id="progressBarFill" class="progress-bar-fill" style="width: 0%;"></div>
+            <div id="progressBarFill" class="progress-bar-fill"></div>
           </div>
         </div>
       </div>
@@ -334,14 +721,14 @@
         <!-- Selection Box Notice Badge -->
         <div id="selectionBadgeNotice" class="selection-box-badge hidden">
           <span>🎯 Lokaler KI-Edit aktiv: <strong id="lblSelectionCoords">(0..10, 0..10, 0..10)</strong></span>
-          <button id="btnClearSelectionBox" class="btn-micro" type="button" title="Auswahl aufheben">✕</button>
+          <button id="btnClearSelectionBox" class="btn-micro" type="button" title="Auswahl aufheben" aria-label="Aktiven 3D-Auswahlbereich aufheben">✕</button>
         </div>
 
         <!-- Chat Input Form -->
         <form id="chatForm" class="chat-form">
           <div class="auto-execute-row">
             <label class="checkbox-container">
-              <input type="checkbox" id="chkAutoExecute">
+              <input type="checkbox" id="chkAutoExecute" aria-label="Sofort in Minecraft ohne Bestätigung bauen">
               <span class="checkmark"></span>
               Sofort in Minecraft bauen (ohne Bestätigung)
             </label>
@@ -352,6 +739,7 @@
               id="txtPrompt"
               placeholder="z. B. 'Mittelalterliches Gasthaus mit Schindeldach'..."
               autocomplete="off"
+              aria-label="Architekten-Bauauftrag oder Prompt eingeben"
             >
             <button type="submit" id="btnSendPrompt" class="btn btn-primary">
               Planen
@@ -361,6 +749,741 @@
       </div>
     </section>
   </main>
+
+  <!-- ONBOARDING SETUP WIZARD MODAL -->
+  <div id="onboardingModal" class="onboarding-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
+    <div class="onboarding-card">
+      <div class="onboarding-header">
+        <div class="onboarding-header-left">
+          <span class="onboarding-badge">ASSISTENT</span>
+          <h2 id="onboardTitle">Architect Mission Control — Ersteinrichtung</h2>
+        </div>
+        <button id="btnCloseOnboarding" class="btn-micro" type="button" title="Schließen" aria-label="Schließen">✕</button>
+      </div>
+
+      <!-- Step Progress Dots -->
+      <div class="onboarding-steps-bar">
+        <div class="step-dot active" data-step="1" title="Willkommen">1</div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="2" title="Spielername">2</div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="3" title="Bot-Account">3</div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="4" title="Server">4</div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="5" title="Modus & Rechte">5</div>
+        <div class="step-line"></div>
+        <div class="step-dot" data-step="6" title="Zusammenfassung">6</div>
+      </div>
+
+      <div class="onboarding-content">
+        <!-- STEP 1: Willkommensscreen -->
+        <div id="onboardStep1" class="onboard-step active">
+          <div class="welcome-hero">
+            <div class="hero-icon">🏰✨</div>
+            <h3>Willkommen beim BaumeisterKI Setup!</h3>
+            <p class="hero-text">
+              Dein autonomer Minecraft-Architekt mit Multi-Provider-KI und Voxel-Synthese ist bereit.
+            </p>
+            <div class="hero-highlights">
+              <div class="highlight-item">
+                <span class="hl-icon">🧭</span>
+                <div>
+                  <strong>Automatische Rechte-Erkennung</strong>
+                  <p>Der Bot passt sich flexibel den Rechten auf deinem Server an (OP vs. Survival).</p>
+                </div>
+              </div>
+              <div class="highlight-item">
+                <span class="hl-icon">🔄</span>
+                <div>
+                  <strong>1-Account Session Handoff</strong>
+                  <p>Nutze denselben Account wie der Bot: Joinst du, pausiert der Bot automatisch.</p>
+                </div>
+              </div>
+              <div class="highlight-item">
+                <span class="hl-icon">⚡</span>
+                <div>
+                  <strong>Maßgeschneiderte .env</strong>
+                  <p>Wir erstellen in wenigen Schritten deine schlüsselfertige Konfigurationsdatei.</p>
+                </div>
+              </div>
+            </div>
+            <button id="btnOnboardStart" class="btn btn-primary btn-large mt-3" type="button">
+              Setup starten ▶
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2: Spielername (Owner) -->
+        <div id="onboardStep2" class="onboard-step">
+          <div class="step-body">
+            <h3>1. Dein Minecraft-Spielername</h3>
+            <p class="step-desc">
+              Gib deinen eigenen Spielernamen in Minecraft an. So erkennt BaumeisterKI dich als seinen Besitzer und hört auf deine Chat-Befehle (!scan, !come, !stop, !undo).
+            </p>
+            <div class="form-group mt-2">
+              <label for="obOwner">Dein Spielername (BOT_OWNER):</label>
+              <input type="text" id="obOwner" class="input-lg" placeholder="z. B. Steve" required>
+              <div id="obErrorStep2" class="onboard-step-error hidden"></div>
+            </div>
+            <div class="info-callout mt-2">
+              <span class="callout-icon">💡</span>
+              <p>Dank <strong>1-Account Handoff</strong> kannst du sogar denselben Minecraft-Account verwenden: Sobald du selbst den Server betrittst, räumt der Bot sofort das Feld!</p>
+            </div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary btn-step-back" data-to="1" type="button">◀ Zurück</button>
+            <button class="btn btn-primary btn-step-next" data-to="3" type="button">Weiter ▶</button>
+          </div>
+        </div>
+
+        <!-- STEP 3: Bot-Account (Name & Auth) -->
+        <div id="onboardStep3" class="onboard-step">
+          <div class="step-body">
+            <h3>2. Minecraft-Account für den Bot</h3>
+            <p class="step-desc">
+              Unter welchem Namen und Anmelde-Verfahren soll dein Bot auf dem Minecraft-Server erscheinen?
+            </p>
+            <div class="form-group mt-2">
+              <label for="obBotUsername">Name des Bots (MC_USERNAME):</label>
+              <input type="text" id="obBotUsername" class="input-lg" placeholder="BaumeisterKI" required>
+              <div id="obErrorStep3" class="onboard-step-error hidden"></div>
+            </div>
+
+            <label class="control-label mt-2">Authentifizierungs-Verfahren (MC_AUTH):</label>
+            <div class="auth-choice-grid mt-1">
+              <label class="choice-card active">
+                <input type="radio" name="obAuthRadio" value="offline" checked aria-label="Offline LAN-Modus">
+                <div class="card-content">
+                  <span class="card-title">🔌 Offline / LAN</span>
+                  <p class="card-desc">Für Offline-Mode Server, private Netzwerke & lokales Testen. Kein Microsoft-Passwort erforderlich.</p>
+                </div>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="obAuthRadio" value="microsoft" aria-label="Offizieller Microsoft Account">
+                <div class="card-content">
+                  <span class="card-title">🔐 Microsoft Account</span>
+                  <p class="card-desc">Offizieller Minecraft Java Account. Sicherer Login via Microsoft Device-Code beim Starten.</p>
+                </div>
+              </label>
+            </div>
+
+            <!-- Interaktive Microsoft-Authentifizierung direkt im Onboarding -->
+            <div id="obMsaContainer" class="msa-container mt-2 hidden">
+              <div class="msa-card">
+                <div class="msa-header">
+                  <div class="msa-title-group">
+                    <span class="msa-icon">🔐</span>
+                    <div>
+                      <strong>Microsoft-Authentifizierung</strong>
+                      <div id="obMsaStatusText" class="msa-subtitle">Prüfe Token-Status...</div>
+                    </div>
+                  </div>
+                  <span id="obMsaBadge" class="badge-sub">Status: Unbekannt</span>
+                </div>
+
+                <!-- Status 1: Nicht autorisiert / Start Button -->
+                <div id="obMsaPromptSection" class="msa-body mt-2">
+                  <p class="text-sm text-dim">
+                    Verbinde deinen echten Minecraft Java Account sicher über den offiziellen Microsoft Device Flow.
+                  </p>
+                  <button id="btnObStartMsa" class="btn btn-primary btn-sm mt-1" type="button">
+                    🔐 Microsoft-Konto jetzt verbinden
+                  </button>
+                </div>
+
+                <!-- Status 2: Code erhalten / Warte auf Benutzer -->
+                <div id="obMsaCodeSection" class="msa-body mt-2 hidden">
+                  <div class="msa-code-box">
+                    <span class="text-xs text-dim">1. Klicke auf den Button oder öffne den Link im Browser:</span>
+                    <div class="msa-action-row mt-1">
+                      <a id="lnkObMsaDirect" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">
+                        🔗 microsoft.com/link mit Code öffnen ↗
+                      </a>
+                    </div>
+                    <div class="msa-code-display mt-2">
+                      <span class="text-xs text-dim">2. Falls danach gefragt wird, gib diesen Code ein:</span>
+                      <div class="code-copy-row mt-1">
+                        <strong id="obMsaUserCode" class="monospace-lg">--------</strong>
+                        <button id="btnObCopyMsaCode" class="btn-micro" type="button" title="Code kopieren" aria-label="Microsoft-Autorisierungscode in die Zwischenablage kopieren">📋 Kopieren</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="msa-spinner-row mt-2">
+                    <div class="cad-spinner-micro"></div>
+                    <span class="text-xs text-dim">Warte auf deine Bestätigung bei Microsoft im Browser...</span>
+                  </div>
+                </div>
+
+                <!-- Status 3: Erfolgreich autorisiert -->
+                <div id="obMsaSuccessSection" class="msa-body mt-2 hidden">
+                  <div class="msa-success-box">
+                    <span class="msa-success-icon">✅</span>
+                    <div>
+                      <strong id="obMsaSuccessUser">Erfolgreich mit Microsoft verbunden!</strong>
+                      <p class="text-xs text-dim">Der Account ist verifiziert. Der Bot kann dem Server beitreten.</p>
+                    </div>
+                  </div>
+                  <button id="btnObMsaReauth" class="btn btn-secondary btn-micro mt-2" type="button" aria-label="Microsoft-Account wechseln oder neu autorisieren">
+                    🔄 Account wechseln / neu autorisieren
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary btn-step-back" data-to="2" type="button">◀ Zurück</button>
+            <button class="btn btn-primary btn-step-next" data-to="4" type="button">Weiter ▶</button>
+          </div>
+        </div>
+
+        <!-- STEP 4: Server-Verbindung & Version -->
+        <div id="onboardStep4" class="onboard-step">
+          <div class="step-body">
+            <h3>3. Minecraft-Server & Version</h3>
+            <p class="step-desc">
+              Auf welchem Server soll dein Architekt-Bot platziert werden?
+            </p>
+            <div class="form-row mt-2">
+              <div class="form-group flex-2">
+                <label for="obHost">Server-Adresse / IP (MC_HOST):</label>
+                <input type="text" id="obHost" class="input-lg" placeholder="127.0.0.1" required>
+              </div>
+              <div class="form-group flex-1">
+                <label for="obPort">Port (MC_PORT):</label>
+                <input type="number" id="obPort" class="input-lg" value="25565" min="1" max="65535" required>
+              </div>
+            </div>
+            <div id="obErrorStep4" class="onboard-step-error hidden"></div>
+
+            <div class="form-group mt-2">
+              <label for="obVersion">Minecraft-Version (MC_VERSION):</label>
+              <input type="text" id="obVersion" placeholder="auto">
+              <div class="version-chips mt-1" id="obVersionChips">
+                <button type="button" class="chip-sm active" data-ver="auto">auto (Empfohlen)</button>
+                <button type="button" class="chip-sm" data-ver="26.3">26.3 (SOTA)</button>
+                <button type="button" class="chip-sm" data-ver="1.21.4">1.21.4</button>
+                <button type="button" class="chip-sm" data-ver="1.21.1">1.21.1</button>
+                <button type="button" class="chip-sm" data-ver="1.20.4">1.20.4</button>
+                <button type="button" class="chip-sm" data-ver="1.20.1">1.20.1</button>
+              </div>
+            </div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary btn-step-back" data-to="3" type="button">◀ Zurück</button>
+            <button class="btn btn-primary btn-step-next" data-to="5" type="button">Weiter ▶</button>
+          </div>
+        </div>
+
+        <!-- STEP 5: Server-Rechte & Ausführungsmodus ("zu 3.") -->
+        <div id="onboardStep5" class="onboard-step">
+          <div class="step-body">
+            <h3>4. Server-Rechte & Ausführungsmodus</h3>
+            <p class="step-desc">
+              Der Bot richtet sich immer nach den Rechten, die er auf dem jeweiligen Server hat!
+            </p>
+
+            <div class="mode-choice-grid mt-2">
+              <label class="mode-card active">
+                <input type="radio" name="obModeRadio" value="auto" checked aria-label="Ausführungsmodus Auto-Erkennung">
+                <div class="mode-card-header">
+                  <span class="mode-card-title">🌟 Auto-Erkennung (Empfohlen)</span>
+                  <span class="mode-card-badge">Intelligent</span>
+                </div>
+                <p class="mode-card-desc">
+                  Der Bot prüft beim Beitreten seine Server-Rechte: Mit OP nutzt er High-Speed /setblock & /fill (hybrid_visual). Hat er normale Spieler-Rechte, schaltet er automatisch auf reines Survival mit Kisten-Beschaffung um (pure_physical)!
+                </p>
+              </label>
+
+              <label class="mode-card">
+                <input type="radio" name="obModeRadio" value="pure_physical" aria-label="Ausführungsmodus Reines Survival (pure_physical)">
+                <div class="mode-card-header">
+                  <span class="mode-card-title">🪓 Reines Survival (pure_physical)</span>
+                  <span class="mode-card-badge">Non-OP</span>
+                </div>
+                <p class="mode-card-desc">
+                  Keine Cheats oder OP nötig. Der Bot läuft physisch zum Bauplatz, platziert Blöcke per Hand und holt fehlende Materialien autonom aus Kisten.
+                </p>
+              </label>
+
+              <label class="mode-card">
+                <input type="radio" name="obModeRadio" value="hybrid_visual" aria-label="Ausführungsmodus Kreativ und OP (hybrid_visual)">
+                <div class="mode-card-header">
+                  <span class="mode-card-title">⚡ Kreativ / OP (hybrid_visual)</span>
+                  <span class="mode-card-badge">OP Level 2+</span>
+                </div>
+                <p class="mode-card-desc">
+                  Der Bot schwingt den Arm und platziert Blöcke via /setblock und Greedy /fill. Blitzschnell, erfordert aber Operator-Rechte.
+                </p>
+              </label>
+
+              <label class="mode-card">
+                <input type="radio" name="obModeRadio" value="rcon_visual" aria-label="Ausführungsmodus RCON High-Speed (rcon_visual)">
+                <div class="mode-card-header">
+                  <span class="mode-card-title">📡 RCON High-Speed (rcon_visual)</span>
+                  <span class="mode-card-badge">RCON Port</span>
+                </div>
+                <p class="mode-card-desc">
+                  Setzt Baubefehle direkt über die Minecraft-RCON-Schnittstelle ab. Maximale Geschwindigkeit ohne Chat-Spam.
+                </p>
+              </label>
+            </div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary btn-step-back" data-to="4" type="button">◀ Zurück</button>
+            <button class="btn btn-primary btn-step-next" data-to="6" type="button">Weiter ▶</button>
+          </div>
+        </div>
+
+        <!-- STEP 6: Zusammenfassung & .env generieren -->
+        <div id="onboardStep6" class="onboard-step">
+          <div class="step-body">
+            <h3>5. Konfiguration überprüfen & speichern</h3>
+            <p class="step-desc">
+              Hier ist die Zusammenfassung deiner maßgeschneiderten Einstellungen:
+            </p>
+
+            <div class="summary-card mt-2">
+              <div class="summary-row">
+                <span class="summary-label">Besitzer (Owner):</span>
+                <strong id="sumOwner" class="summary-val">-</strong>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Bot-Account:</span>
+                <strong id="sumBotAccount" class="summary-val">-</strong>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Server:</span>
+                <strong id="sumServer" class="summary-val">-</strong>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Minecraft-Version:</span>
+                <strong id="sumVersion" class="summary-val">-</strong>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Ausführungs-Modus:</span>
+                <strong id="sumMode" class="summary-val">-</strong>
+              </div>
+            </div>
+
+            <div class="survival-quick-options mt-2">
+              <label class="checkbox-container">
+                <input type="checkbox" id="obChkProcure" checked>
+                <span class="checkmark"></span>
+                Automatische Kisten-Suche vor Baubeginn (Survival)
+              </label>
+              <label class="checkbox-container mt-1">
+                <input type="checkbox" id="obChkStrict">
+                <span class="checkmark"></span>
+                Strikte Materialien (Baustopp bei Materialmangel)
+              </label>
+              <label class="checkbox-container mt-1">
+                <input type="checkbox" id="obChkHarvest">
+                <span class="checkmark"></span>
+                Autonomes Ressourcen-Farming (Holz &amp; Stein)
+              </label>
+              <label class="checkbox-container mt-1">
+                <input type="checkbox" id="obChkSleep" checked>
+                <span class="checkmark"></span>
+                Bei Nacht automatisch ein Bett aufsuchen
+              </label>
+              <label class="checkbox-container mt-1">
+                <input type="checkbox" id="obChkHandoff" checked>
+                <span class="checkmark"></span>
+                1-Account Session Handoff aktivieren
+              </label>
+            </div>
+
+            <div id="onboardSaveFeedback" class="onboard-feedback mt-2"></div>
+          </div>
+          <div class="step-nav">
+            <button class="btn btn-secondary btn-step-back" data-to="5" type="button">◀ Zurück</button>
+            <button id="btnOnboardSave" class="btn btn-success btn-large" type="button">
+              💾 Maßgeschneiderte .env speichern & Bot starten
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================================== -->
+  <!-- MILESTONE M7: ARCHITECT MISSION CONTROL // MODEL COCKPIT                       -->
+  <!-- ============================================================================== -->
+  <div id="modalModelSettings" class="cad-modal-overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalSettingsTitle">
+    <div class="cad-modal-container modal-cad-window">
+      <!-- Modal Header -->
+      <div class="cad-modal-header modal-cad-header">
+        <div class="modal-title-group modal-header-left">
+          <span class="modal-icon modal-header-icon">⚙️</span>
+          <h2 id="modalSettingsTitle">ARCHITECT MISSION CONTROL // MODEL COCKPIT</h2>
+          <span class="cad-version-tag badge-sub">SOTA v2.1</span>
+        </div>
+        <div class="modal-header-actions">
+          <button id="btnOpenAddEndpoint" class="btn btn-primary btn-sm" type="button" aria-label="Neuen KI-Modell-Endpunkt konfigurieren">+ Neuer Endpunkt</button>
+          <button id="btnCloseModelSettings" class="btn-micro modal-close btn-modal-close" type="button" aria-label="Modal schließen" title="Schließen (ESC)">✕</button>
+        </div>
+      </div>
+
+      <!-- Modal Body (4 Zonen) -->
+      <div class="cad-modal-body modal-cad-body">
+        
+        <!-- ZONE 1: Tier-Zuweisung & Global Status -->
+        <section id="zoneTierAssignment" class="settings-zone zone-container zone-tier">
+          <div class="zone-header">
+            <span class="zone-title">ZONE 1: GLOBAL MODEL STATUS &amp; TIER ASSIGNMENT</span>
+            <span id="tierAssignmentSyncBadge" class="status-pill-cad healthy badge-sub">Auto-Sync aktiv</span>
+          </div>
+          
+          <div class="tier-selection-grid tier-grid">
+            <!-- Fast Tier Selection -->
+            <div class="tier-col tier-card">
+              <div class="tier-label-group">
+                <label for="selectFastTier" class="tier-label tier-name">Fast Tier (Chat, Quick Commands &amp; Perception):</label>
+                <span id="badgeFastTierStatus" class="status-indicator status-pill-cad ready online">🟢 Bereit (48ms)</span>
+              </div>
+              <div class="tier-control-row tier-controls">
+                <select id="selectFastTier" class="cad-select tier-select" aria-label="Fast Tier Endpunkt"></select>
+                <button id="btnTestFastTier" class="btn btn-secondary btn-xs" type="button" title="Fast Tier testen">Probe</button>
+              </div>
+            </div>
+
+            <!-- Architect Tier Selection -->
+            <div class="tier-col tier-card">
+              <div class="tier-label-group">
+                <label for="selectArchitectTier" class="tier-label tier-name">Architect Tier (CAD, Code Synthese &amp; Voxel Engine):</label>
+                <span id="badgeArchitectTierStatus" class="status-indicator status-pill-cad ready online">🟢 Bereit (310ms)</span>
+              </div>
+              <div class="tier-control-row tier-controls">
+                <select id="selectArchitectTier" class="cad-select tier-select" aria-label="Architect Tier Endpunkt"></select>
+                <button id="btnTestArchitectTier" class="btn btn-secondary btn-xs" type="button" title="Architect Tier testen">Probe</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Zero-Key Emergency Fallback Toggle -->
+          <div class="fallback-toggle-row zone-footer-row">
+            <label class="checkbox-container">
+              <input type="checkbox" id="toggleZeroKeyEmergency" checked>
+              <span class="checkmark"></span>
+              <span class="checkbox-label">Schlüsselloser Notfall-Gateway-Fallback aktiv (Kilo AI / LLM7 bei Kontingenterschöpfung)</span>
+            </label>
+            <span class="fallback-info-tooltip" title="Greift automatisch ein, wenn Cloud-Kontingente erschöpft sind ($0.00)">ℹ️</span>
+          </div>
+        </section>
+
+        <!-- ZONE 2: Zero-Config Local Scanner -->
+        <section id="zoneLocalScanner" class="settings-zone zone-container zone-scanner">
+          <div class="zone-header">
+            <div class="zone-title-group">
+              <span class="zone-title">ZONE 2: ZERO-CONFIG LOCAL MODEL AUTO-DETECTOR</span>
+              <span class="zone-subtitle scanner-hint">(Ollama, LM Studio, vLLM, llama.cpp, Jan)</span>
+            </div>
+            <div class="scanner-actions">
+              <button id="btnScanLocal" class="btn btn-secondary btn-sm" type="button">
+                <span class="scanner-btn-icon">🔍</span>
+                <span class="scanner-btn-text">Lokale Inferenz-Server suchen</span>
+              </button>
+              <span id="scanStatusBadge" class="scanner-status-tag scanner-status badge-sub idle">Scanner: Bereit</span>
+            </div>
+          </div>
+          
+          <div class="vram-telemetry-box mt-1">
+            <div class="vram-labels">
+              <span class="vram-title">GPU VRAM Offload:</span>
+              <span id="txtVramStatus" class="vram-val">0 GB / 0 GB</span>
+              <span id="badgeGpuStatus" class="gpu-status-badge optimal">GPU: Bereit</span>
+            </div>
+            <div class="vram-track vram-bar-track">
+              <div id="progressVram" class="vram-fill vram-bar-fill optimal"></div>
+            </div>
+          </div>
+
+          <!-- Container für dynamisch gefundene Instanzen -->
+          <div id="localScannerResults" class="local-instances-list local-instances-container mt-2">
+            <div class="scanner-empty-hint empty-hint">
+              Klicke auf "Lokale Inferenz-Server suchen", um auf Port 11434, 1234, 8000, 8080 &amp; 1337 laufende Modelle automatisch zu erkennen.
+            </div>
+          </div>
+        </section>
+
+        <!-- ZONE 3: Provider Overview Cards Grid -->
+        <section id="zoneProviderGrid" class="settings-zone zone-container zone-grid">
+          <div class="zone-header">
+            <span class="zone-title">ZONE 3: PROVIDER OVERVIEW CARDS &amp; FABRIC</span>
+            <span class="zone-count-badge badge-sub" id="lblProviderCount">Provider-Katalog</span>
+          </div>
+
+          <!-- Responsive Grid von Karten -->
+          <div id="providerGrid" class="provider-cards-grid provider-grid">
+            <!-- Dynamisch über app.js befüllt -->
+          </div>
+        </section>
+
+        <!-- ZONE 4: Live Telemetrie & Quoten-Monitor -->
+        <section id="zoneTelemetryMonitor" class="settings-zone zone-container zone-telemetry">
+          <div class="zone-header">
+            <span class="zone-title">ZONE 4: LIVE TELEMETRIE &amp; QUOTEN-MONITOR</span>
+            <span id="activeModelBadge" class="live-pulse-badge badge-sub">● LIVE RTT</span>
+          </div>
+
+          <div id="quotaMonitor" class="telemetry-metrics-grid telemetry-monitor-bar">
+            <div class="metric-card tel-monitor-item">
+              <span class="metric-title tel-label">Letzter Router-Aufruf:</span>
+              <span id="txtLastRouterEndpoint" class="metric-value tel-val">-</span>
+              <span id="metricLatency" class="metric-sub good">-</span>
+            </div>
+
+            <div class="metric-card tel-monitor-item">
+              <span class="metric-title tel-label">Erfolgsrate (24h):</span>
+              <span id="metricSuccessRate" class="metric-value tel-val">100%</span>
+              <span class="metric-sub">0 Failovers</span>
+            </div>
+
+            <div class="metric-card tel-monitor-item">
+              <span class="metric-title tel-label">Verbleibende Quoten:</span>
+              <span id="txtRemainingRequests" class="metric-value tel-val">OK</span>
+              <span id="metricQuota" class="metric-sub">x-ratelimit-remaining: OK</span>
+            </div>
+
+            <div class="metric-card tel-monitor-item">
+              <span class="metric-title tel-label">429 Cooldown-Timer:</span>
+              <span id="timerCooldown429" class="metric-value tel-val idle">Inaktiv</span>
+              <span id="txtCooldownSub" class="metric-sub">0s</span>
+            </div>
+          </div>
+
+          <!-- Fehler-Alarm-Banner (Standard: ausgeblendet) -->
+          <div id="bannerModelError" class="model-error-banner hidden" role="alert">
+            <div class="banner-icon">⚠️</div>
+            <div class="banner-content">
+              <strong id="lblBannerErrorTitle">Fehler bei Verbindung:</strong>
+              <p id="lblBannerErrorDesc">API-Schlüssel ungültig oder abgelaufen.</p>
+              <div class="banner-action-row">
+                <span id="lblBannerActionHint" class="action-hint">Handlungsempfehlung: Bitte prüfe den Key in der Provider-Konsole.</span>
+                <button id="btnDismissErrorBanner" class="btn-micro" type="button" aria-label="Modell-Fehlermeldung ausblenden">✕</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="cad-modal-footer modal-footer">
+        <div class="modal-footer-hints">
+          <span>Tipp: Änderungen an Tiers werden unterbrechungsfrei im laufenden Bot-Betrieb aktiv.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide-Over Drawer: Endpunkt hinzufügen / bearbeiten -->
+  <div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
+  <aside id="drawerEndpointEdit" class="cad-drawer slide-drawer hidden" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+    <div class="drawer-header">
+      <h3 id="drawerTitle">Endpunkt konfigurieren</h3>
+      <button id="btnCloseDrawer" class="btn-micro" type="button" aria-label="Schließen" title="Schließen">✕</button>
+    </div>
+
+    <form id="formEndpointConfig" class="drawer-body">
+      <input type="hidden" id="txtEndpointId" value="">
+
+      <div class="form-group">
+        <label for="selEndpointProvider" class="control-label">Provider:</label>
+        <select id="selEndpointProvider" class="cad-select drawer-input">
+          <option value="GitHub">🐙 GitHub Models (RFC 8628 Device Flow)</option>
+          <option value="OpenRouter">🌐 OpenRouter (Universal AI Gateway)</option>
+          <option value="Cerebras">⚡ Cerebras Cloud (High-Speed LPU)</option>
+          <option value="Groq">🚀 GroqCloud (Ultra-Fast LPU)</option>
+          <option value="Mistral">🌪️ Mistral AI / Codestral</option>
+          <option value="Gemini">💎 Google Gemini</option>
+          <option value="Ollama">🦙 Ollama (Lokal)</option>
+          <option value="LMStudio">🧪 LM Studio (Lokal)</option>
+          <option value="Custom">🔌 Custom OpenAI-compatible</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="txtEndpointName" class="control-label">Anzeigename:</label>
+        <input type="text" id="txtEndpointName" class="cad-input drawer-input" placeholder="z. B. Cerebras Fast" required>
+      </div>
+
+      <div class="form-group">
+        <label for="selEndpointTier" class="control-label">Rolle (Tier):</label>
+        <select id="selEndpointTier" class="cad-select drawer-input">
+          <option value="FAST_TIER">Fast Tier (Chat &amp; Loops)</option>
+          <option value="ARCHITECT_TIER">Architect Tier (CAD &amp; Bauplan)</option>
+          <option value="FALLBACK_POOL">Fallback Pool (Nur bei Ausfall)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="txtEndpointBaseUrl" class="control-label">Base URL (OpenAI-kompatibel):</label>
+        <input type="url" id="txtEndpointBaseUrl" class="cad-input drawer-input" placeholder="https://api.cerebras.ai/v1" required>
+      </div>
+
+      <div class="form-group">
+        <label for="txtEndpointModelId" class="control-label">Modell-ID:</label>
+        <input type="text" id="txtEndpointModelId" class="cad-input drawer-input" placeholder="z. B. llama-3.3-70b" required>
+      </div>
+
+      <!-- API-Key mit Write-Only Schutz -->
+      <div class="form-group">
+        <div class="label-with-hint">
+          <label for="txtEndpointSecret" class="control-label">API-Schlüssel / Token:</label>
+          <span id="lblSecretVaultStatus" class="secret-vault-status-badge badge-sub">🔒 Im Vault gesichert</span>
+        </div>
+        <div class="password-input-wrapper secret-input-wrapper">
+          <input type="password" id="txtEndpointSecret" class="cad-input drawer-input monospace" placeholder="sk-... oder leer lassen wenn unverändert" autocomplete="off">
+          <button type="button" id="btnToggleSecretVisibility" class="btn-micro btn-eye btn-toggle-eye" title="Sichtbarkeit umschalten" aria-label="API-Schlüssel Sichtbarkeit umschalten">👁</button>
+        </div>
+        <span class="input-subtext text-muted text-2xs">Write-Only: Bestehendes Secret bleibt unverändert, wenn dieses Feld maskiert (sk-...) oder leer bleibt.</span>
+      </div>
+
+      <!-- Erweiterte Parameter -->
+      <details class="cad-details mt-1">
+        <summary class="drawer-advanced-summary">Erweiterte Parameter (Temperature, Tokens, Reasoning)</summary>
+        <div class="details-content mt-1">
+          <div class="form-row flex-row-gap">
+            <div class="form-group flex-1">
+              <label for="numTemperature" class="control-label">Temperature:</label>
+              <input type="number" id="numTemperature" class="cad-input drawer-input" step="0.05" min="0" max="2" value="0.2">
+            </div>
+            <div class="form-group flex-1">
+              <label for="numMaxTokens" class="control-label">Max Tokens:</label>
+              <input type="number" id="numMaxTokens" class="cad-input drawer-input" value="4000">
+            </div>
+          </div>
+          <div class="form-group mt-1">
+            <label class="checkbox-container">
+              <input type="checkbox" id="chkEndpointThinking">
+              <span class="checkmark"></span>
+              Reasoning / Thinking Modell (DeepSeek R1 / gpt-oss)
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <div id="drawerProbeFeedback" class="drawer-feedback mt-2 hidden" role="status" aria-live="polite"></div>
+
+      <!-- Drawer Aktionen -->
+      <div class="drawer-actions mt-2 flex-between-center">
+        <div>
+          <button type="button" id="btnTestAdhoc" class="btn btn-secondary">
+            ⚡ Verbindung testen
+          </button>
+          <button type="button" id="btnDeleteEndpoint" class="btn btn-danger ml-6 hidden" aria-label="Diesen Modell-Endpunkt unwiderruflich löschen">
+            🗑️ Löschen
+          </button>
+        </div>
+        <div class="drawer-actions-right">
+          <button type="button" id="btnCancelDrawer" class="btn btn-secondary mr-6">Abbrechen</button>
+          <button type="submit" id="btnSaveEndpoint" class="btn btn-primary">💾 Speichern &amp; Aktivieren</button>
+        </div>
+      </div>
+    </form>
+  </aside>
+
+  <!-- RFC 8628 GitHub Models Device Flow Modal -->
+  <div id="modalDeviceFlow" class="cad-modal-overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="deviceFlowTitle">
+    <div class="cad-modal-container device-flow-container device-flow-dialog-card">
+      <div class="cad-modal-header device-flow-header">
+        <div class="modal-title-group">
+          <span class="modal-icon">🐙</span>
+          <h3 id="deviceFlowTitle">1-Click GitHub Models Kopplung (RFC 8628)</h3>
+        </div>
+        <button id="btnCancelDeviceFlow" class="btn-micro" type="button" title="Abbrechen" aria-label="Schließen">✕</button>
+      </div>
+
+      <div class="device-flow-body">
+        <p class="flow-instruction">
+          Verbinde deinen persönlichen GitHub-Account schlüssellos, um GPT-4o, Llama 3.3 und Mistral Large mit deinem kostenlosen GitHub Models Kontingent zu nutzen.
+        </p>
+
+        <!-- Schritt 1: Code Anzeige -->
+        <div class="code-display-box">
+          <span class="code-label">Dein Bestätigungs-Code:</span>
+          <div id="txtDeviceCode" class="device-code-display device-user-code" title="Klicken zum Kopieren">
+            WDJB-WQWD
+          </div>
+          <button id="btnCopyDeviceCode" class="btn btn-secondary btn-sm" type="button" aria-label="GitHub-Bestätigungscode in die Zwischenablage kopieren">
+            📋 Code kopieren
+          </button>
+        </div>
+
+        <!-- Schritt 2: Verifikations-Button -->
+        <div class="verify-action-box">
+          <a id="linkVerificationUri" class="btn btn-primary btn-large verify-action-link" href="https://github.com/login/device" target="_blank" rel="noopener noreferrer">
+            ↗ Auf GitHub freigeben
+          </a>
+          <div class="verify-hint text-muted">
+            Öffnet github.com/login/device in einem neuen Browser-Tab
+          </div>
+        </div>
+
+        <!-- Schritt 3: Polling Status & Countdown -->
+        <div class="device-status-box">
+          <div class="device-spinner-row">
+            <div class="cad-spinner"></div>
+            <span id="lblDevicePollingState" class="device-polling-label" aria-live="polite">Warte auf Autorisierung auf github.com...</span>
+          </div>
+          <div class="countdown-row">
+            <span>Zeitfenster gültig für: </span>
+            <span id="timerDeviceCode" class="countdown-timer countdown-val">15:00 min</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Microsoft Account Authentication Modal (Live Bot Prompt) -->
+  <div id="modalMsaAuth" class="cad-modal-overlay modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="msaModalTitle">
+    <div class="cad-modal-container device-flow-container device-flow-dialog-card">
+      <div class="cad-modal-header device-flow-header">
+        <div class="modal-title-group">
+          <span class="modal-icon">🔐</span>
+          <h3 id="msaModalTitle">Microsoft-Authentifizierung erforderlich</h3>
+        </div>
+        <button id="btnCloseMsaModal" class="btn-micro" type="button" title="Schließen" aria-label="Schließen">✕</button>
+      </div>
+
+      <div class="device-flow-body">
+        <p class="flow-instruction">
+          Der Minecraft-Bot benötigt eine Autorisierung deines Microsoft-Kontos, um dem Server beizutreten.
+        </p>
+
+        <!-- Code Anzeige -->
+        <div class="code-display-box">
+          <span class="code-label">Dein Autorisierungs-Code:</span>
+          <div id="txtMsaGlobalCode" class="device-code-display device-user-code" title="Klicken zum Kopieren">
+            --------
+          </div>
+          <button id="btnCopyMsaGlobalCode" class="btn btn-secondary btn-sm" type="button" aria-label="Microsoft-Code in die Zwischenablage kopieren">
+            📋 Code kopieren
+          </button>
+        </div>
+
+        <!-- 1-Klick Button -->
+        <div class="verify-action-box">
+          <a id="linkMsaGlobalDirect" class="btn btn-primary btn-large verify-action-link" href="#" target="_blank" rel="noopener noreferrer">
+            🔗 Im Browser öffnen &amp; bestätigen ↗
+          </a>
+          <div class="verify-hint text-muted">
+            Öffnet microsoft.com/link mit vorausgefülltem Code
+          </div>
+        </div>
+
+        <!-- Spinner & Status -->
+        <div class="device-status-box">
+          <div class="device-spinner-row">
+            <div class="cad-spinner"></div>
+            <span id="lblMsaGlobalStatus" class="device-polling-label" aria-live="polite">Warte auf Bestätigung bei Microsoft...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js" type="module"></script>
 </body>
