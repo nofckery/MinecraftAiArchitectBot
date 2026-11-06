@@ -32,6 +32,7 @@
 | M3 | VersionResolver & Builder Cleanup & Canonical Exports | `src/config/versionResolver.js`, `src/builder/worldExecutor.js`, `src/security/credentialVault.js`, `src/builder/voxelCanvas.js`, `test/coreUtilitiesTest.js` | none | DONE |
 | M4 | Frontend Facade Cleanup & Test Decoupling | `src/web/public/app.js`, `test/challenger_refactor_2_adversarial.js`, `test/missionControlTest.js`, `test/dashboardCockpitTest.js`, `test/manualGamemodeFrontendTest.js`, `test/settingsAndOnboardingTest.js`, `test/viewerFullscreenAndPopoutTest.js` | M1, M2, M3 | DONE |
 | M5 | Full Suite E2E Regression Pass & Forensic Integrity Audit | Full repository test suites (`npm test`, all `test/challenger*.js`) & `teamwork_auditor` verification | M1, M2, M3, M4 | DONE |
+| M6 | Collaborator & GitHub Readiness & SOTA Documentation | Comprehensive README with full setup & operational guide, updated CONTRIBUTING.md, session debris cleanup, ephemeral port binding fix in DashboardServer | M1, M2, M3, M4, M5 | DONE |
 
 ## Interface Contracts
 

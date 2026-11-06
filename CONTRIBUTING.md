@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to the **Autonomous AI Minecraft Architect Bot**! We welcome contributions from developers, architects, builders, and AI enthusiasts.
 
-This guide outlines our development workflow, coding standards, and how to get your contributions reviewed and merged.
+This guide outlines our development workflow, coding standards, and how to get your contributions reviewed and merged so anyone can seamlessly collaborate on GitHub.
 
 ---
 
@@ -12,7 +12,7 @@ This guide outlines our development workflow, coding standards, and how to get y
 3. [Architecture & Project Structure](#3-architecture--project-structure)
 4. [Contribution Workflow](#4-contribution-workflow)
 5. [Coding Standards](#5-coding-standards)
-6. [Testing Requirements](#6-testing-requirements)
+6. [Testing Requirements & Verification](#6-testing-requirements--verification)
 7. [Submitting a Pull Request](#7-submitting-a-pull-request)
 8. [Reporting Bugs & Requesting Features](#8-reporting-bugs--requesting-features)
 
@@ -27,21 +27,24 @@ We are committed to providing a friendly, safe, and welcoming environment for al
 ## 2. Development Environment Setup
 
 ### Prerequisites
-- **Node.js**: `>= 20.0.0` (LTS recommended)
+- **Node.js**: `>= 20.0.0` (Node 20 LTS or Node 22 LTS recommended)
 - **npm**: `>= 10.0.0`
 - **Native Build Tools**: Required for `node-canvas` (e.g. `build-essential`, `libcairo2-dev`, `libpango1.0-dev` on Debian/Ubuntu, or Visual Studio C++ Build Tools on Windows).
-- **Minecraft Server**: Java Edition 1.20.4 (recommended for integration testing).
+- **Minecraft Server**: Java Edition 1.20.4 to 26.3 (Paper, Purpur, Fabric, or Vanilla).
 
 ### Installation Steps
 ```bash
-# 1. Clone the repository
+# 1. Clone your fork or the main repository
 git clone https://github.com/nofckery/MinecraftAiArchitectBot.git
-cd mc-architect-bot
+cd MinecraftAiArchitectBot
 
 # 2. Install dependencies
 npm install
 
 # 3. Create your local environment configuration
+# Windows (PowerShell):
+Copy-Item .env.example .env
+# Linux / macOS:
 cp .env.example .env
 
 # 4. Verify the test suite (100% offline, no live server or API keys required)
@@ -52,16 +55,19 @@ npm test
 
 ## 3. Architecture & Project Structure
 
-The project is structured into modular layers designed for separation of concerns:
+The project is structured into modular layers designed for strict separation of concerns:
 
 | Directory | Layer | Description |
 | :--- | :--- | :--- |
-| `src/ai/` | **Cognitive Layer** | Multi-Provider LLM Router (Cerebras, Groq, Mistral/Codestral, Gemini Flash, SambaNova, Cloudflare, NIM, OpenRouter, Zero-Key Kilo/LLM7), Prompt Engineering, and Architect Agent (with integrated Node:VM Sandbox). |
-| `src/builder/` | **Geometry & Synthesis** | VoxelCanvas SDK, ArchPrimitives (12 procedural modules), Structural Linter (statik & clearance BFS), Greedy Mesher (/fill compression), World Executor (2-phase topology builder, anti-kick rate throttling), Diff Engine, Universal Schematic Manager (.schem, .litematic, .nbt). |
-| `src/bot/` | **Execution Layer** | Mineflayer Bot Client, Session Handoff Manager (1-Account server ping & reconnect), Inventory Manager. |
-| `src/world/` | **Perception Layer** | World Scanner (bounding-box detection via wool markers, terrain relief analysis, neighborhood block palette sampling), Undo Manager (`undoManager.js` rollback logging). |
-| `src/web/` | **Mission Control** | Express + WebSocket server (`dashboardServer.js`), Three.js 3D CAD Editor, 2D Topological Map, BoundingBox selector, Palette Swapper, X-Ray telemetry. |
-| `test/` | **Verification Suite** | `dryRunTest.js` (89 offline geometry/linter/router tests) & `missionControlTest.js` (80 WebSocket/CAD/Session tests). |
+| `src/ai/` | **Cognitive Layer** | Multi-Provider LLM Router (Cerebras, Groq, Mistral/Codestral, Gemini Flash, SambaNova, Cloudflare, NIM, OpenRouter, Zero-Key Kilo/LLM7), Prompt Engineering, Safe Probe Worker, and Architect Agent (with integrated Node:VM Sandbox). |
+| `src/bot/` | **Bot Core & Execution** | Mineflayer Bot Client, Session Handoff Manager (1-Account server ping & reconnect), Threat Manager (proactive mob defense, shield block, retreat), Sleep Controller, Manual Controller. |
+| `src/builder/` | **Geometry & Synthesis** | VoxelCanvas SDK, ArchPrimitives (12 procedural modules), Structural Linter (BFS gravity statics & clearance), Greedy Mesher (/fill compression), World Executor (2-phase topology builder, anti-kick rate throttling), Universal Schematic Manager (.schem, .litematic, .nbt). |
+| `src/config/` | **Config & Versioning** | Version Resolver (26.3 protocol 777 runtime compatibility), Settings parser, and Environment Manager. |
+| `src/security/` | **Security & Vault** | AES-256-GCM + Scrypt Encrypted Credential Vault, Device Flow Manager (RFC 8628 GitHub login), MSA Auth Manager. |
+| `src/survival/` | **Survival Subsystem** | Chest Manager (32m container scanning & capacity-checked withdrawal), Material Procurement, Scaffold Manager (dynamic placement & cleanup of scaffolding for high-rise builds), Harvest Manager. |
+| `src/web/` | **Mission Control Cockpit** | Express + WebSocket server (`dashboardServer.js`), Three.js 3D CAD Editor, 2D Topological Map, Manual Cockpit, Model Cockpit, Area Map, Multi-Monitor Popout Viewer. |
+| `src/world/` | **Perception Layer** | World Scanner (bounding-box detection via wool markers, terrain relief analysis), Undo Manager (`undoManager.js` rollback logging). |
+| `test/` | **Verification Suite** | 19 standardized offline test suites covering 690+ assertions across all modules. |
 
 ---
 
@@ -86,27 +92,39 @@ The project is structured into modular layers designed for separation of concern
 ## 5. Coding Standards
 
 - **Module Format**: Pure ECMAScript Modules (`import` / `export`). Do not use CommonJS `require()`.
-- **Node.js APIs**: Use modern built-in Node 20+ features (`node:fs/promises`, `node:path`, `node:vm`, `crypto.randomUUID()`).
-- **Error Handling**: Use structured logging (`console.log` / `console.warn` / `console.error` with ISO timestamps and bracketed log levels: `[INFO]`, `[WARN]`, `[ERROR]`). Always catch and handle async errors gracefully.
+- **Node.js APIs**: Use modern built-in Node 20+ features (`node:fs/promises`, `node:path`, `node:vm`, `node:crypto`).
+- **Error Handling**: Use structured logging (`logger.info`, `logger.warn`, `logger.error` or ISO timestamps with bracketed levels). Always catch and handle async errors gracefully.
 - **Voxel Transformations**:
   - Maintain coordinate consistency `(x, y, z)`.
   - When rotating or mirroring blocks, always transform directional block properties (`facing`, `shape`, `half`, `axis`, `hinge`).
   - Use `VoxelCanvas` primitives rather than raw coordinate arrays.
 - **Safe Evaluation**: LLM-generated code must always run inside the isolated `node:vm` sandbox with CPU timeout and memory constraints (integrated into `src/ai/architectAgent.js`).
+- **Git Hygiene**: Never commit API keys, personal configs, `.env`, `.vault`, or runtime log files. Ensure `.gitignore` is respected at all times.
 
 ---
 
-## 6. Testing Requirements
+## 6. Testing Requirements & Verification
 
 All contributions must maintain our high bar of software quality:
-- **100% Pass Rate**: `npm test` must pass all 169 tests (89 dry run + 80 mission control).
+- **100% Pass Rate**: `npm test` must pass all 19 test suites without errors.
 - **Offline Self-Containment**: Tests must never rely on an external Minecraft server, active internet connection, or live paid API keys. Use mock sockets, dry-run executors, and simulated HTTP responses.
-- **New Feature Coverage**: When introducing new ArchPrimitives, schematic formats, or API routes, write corresponding tests in `test/dryRunTest.js` or `test/missionControlTest.js`.
+- **New Feature Coverage**: When introducing new ArchPrimitives, schematic formats, or API routes, write corresponding tests in the respective test suite under `test/`.
 
-To run test suites individually:
+Available test commands:
 ```bash
-npm run test:dry      # Executes the 89 dry-run geometry & LLM router tests
-npm run test:mission  # Executes the 80 mission control & CAD Web-UI tests
+npm test                 # Run all 19 standard test suites
+npm run test:dry         # Geometry, procedural synthesis, and LLM router tests
+npm run test:mission     # Mission Control WebSocket, CAD, and Session Handoff tests
+npm run test:milestone1  # Chest logistics & Minecraft 26.3 compatibility tests
+npm run test:milestone2  # Threat Manager, tactical retreat, and sleep tests
+npm run test:vault       # AES-256-GCM Credential Vault tests
+npm run test:model       # Safe Probe Worker & Model Hot-Reload tests
+npm run test:device      # RFC 8628 Device Flow & Local BFF tests
+npm run test:settings    # Onboarding Wizard & Settings tests
+npm run test:builder     # Builder modularization tests
+npm run test:scaffold    # Scaffolding manager tests
+npm run test:gamemode    # All manual gamemode tests (Backend, WS, Frontend, Integration)
+npm run test:popout      # Multi-monitor popout tests
 ```
 
 ---

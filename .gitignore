@@ -25,7 +25,9 @@ pnpm-debug.log*
 logs/
 data/bot.log
 data/undo_journal.json
+*.vault
 data/*.vault
+test/fixtures/*.vault
 data/endpoints.json
 data/test_*
 
@@ -59,5 +61,6 @@ desktop.ini
 # ==============================================================================
 coverage/
 .nyc_output/
+tmp/
 *.tmp
 *.temp

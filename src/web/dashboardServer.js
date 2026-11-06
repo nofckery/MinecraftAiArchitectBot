@@ -95,6 +95,7 @@ export class DashboardServer {
     this.activeCanvas = null;
     this.isRunning = false;
     this.operatorSocket = null;
+    this.port = options.port !== undefined ? options.port : null;
 
     // Milestone M6: Dependency Injection
     this.endpointManager = options.endpointManager || null;
@@ -265,8 +266,8 @@ export class DashboardServer {
     registerModelApiRoutes(this.app, this);
   }
 
-  start() {
-    if (this.isRunning) return;
+  start(portOverride) {
+    if (this.isRunning) return Promise.resolve(this.httpServer);
     this.isRunning = true;
 
     this.setupApp();
@@ -366,9 +367,17 @@ export class DashboardServer {
       this.sendTelemetry();
     }, 500);
 
-    const port = settings.WEB_DASHBOARD_PORT || 3080;
-    this.httpServer.listen(port, () => {
-      logger.info(`Architect Mission Control Web-UI aktiv auf: http://localhost:${port}`);
+    const port = portOverride !== undefined ? portOverride : (this.port !== null && this.port !== undefined ? this.port : (settings.WEB_DASHBOARD_PORT || 3080));
+    return new Promise((resolve, reject) => {
+      this.httpServer.listen(port, () => {
+        const boundPort = this.httpServer.address()?.port || port;
+        logger.info(`Architect Mission Control Web-UI aktiv auf: http://localhost:${boundPort}`);
+        resolve(this.httpServer);
+      });
+      this.httpServer.on('error', (err) => {
+        logger.warn(`[DashboardServer] Fehler beim Starten des HTTP-Servers: ${err.message}`);
+        reject(err);
+      });
     });
   }
 

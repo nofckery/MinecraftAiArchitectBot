@@ -5,17 +5,17 @@ import crypto from 'node:crypto';
 import { CredentialVault, getSystemMasterKey } from '../src/security/credentialVault.js';
 
 const TEST_VAULT_PATH = path.resolve('test', 'fixtures', 'credentials.test.vault');
+const TEST_VAULT_FILES = [
+  TEST_VAULT_PATH,
+  path.resolve('test', 'fixtures', 'vault_concurrent.vault'),
+  path.resolve('test', 'fixtures', 'vault_error_queue.vault')
+];
 
 async function cleanupTestFixtures() {
   try {
-    if (fs.existsSync(TEST_VAULT_PATH)) {
-      await fs.promises.unlink(TEST_VAULT_PATH);
-    }
-    const dir = path.dirname(TEST_VAULT_PATH);
-    if (fs.existsSync(dir)) {
-      const files = await fs.promises.readdir(dir);
-      if (files.length === 0) {
-        await fs.promises.rmdir(dir);
+    for (const filePath of TEST_VAULT_FILES) {
+      if (fs.existsSync(filePath)) {
+        await fs.promises.unlink(filePath);
       }
     }
   } catch (_) {
@@ -24,6 +24,7 @@ async function cleanupTestFixtures() {
 }
 
 async function runTests() {
+  await cleanupTestFixtures();
   console.log('=== STARTING CREDENTIAL VAULT TEST SUITE ===\n');
   let passed = 0;
   let total = 0;
