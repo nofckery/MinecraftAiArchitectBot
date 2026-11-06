@@ -22,19 +22,24 @@ function parseList(val) {
 }
 
 export const settings = {
-  // Minecraft Server
-  MC_HOST: process.env.MC_HOST || '127.0.0.1',
-  MC_PORT: parseInteger(process.env.MC_PORT, 25565),
-  MC_USERNAME: process.env.MC_USERNAME || 'BaumeisterKI',
-  MC_AUTH: process.env.MC_AUTH || 'offline',
+  // Minecraft Server (Keine Standardwerte - erfordert explizite Nutzerdaten)
+  MC_HOST: (process.env.MC_HOST || '').trim(),
+  MC_PORT: process.env.MC_PORT ? parseInteger(process.env.MC_PORT, 25565) : 25565,
+  MC_USERNAME: (process.env.MC_USERNAME || '').trim(),
+  MC_AUTH: (process.env.MC_AUTH || 'offline').trim(),
   MC_VERSION: VersionResolver.normalizeVersion(process.env.MC_VERSION),
-  BOT_OWNER: process.env.BOT_OWNER || 'DeinSpielerName',
+  BOT_OWNER: (process.env.BOT_OWNER || '').trim(),
+
+  // Onboarding & Lifecycle Steuerung
+  ONBOARDING_COMPLETED: parseBoolean(process.env.ONBOARDING_COMPLETED, false),
+  AUTO_CONNECT_ON_START: parseBoolean(process.env.AUTO_CONNECT_ON_START, false),
 
   // Survival & Resource Management
   SURVIVAL_AUTO_PROCUREMENT: parseBoolean(process.env.SURVIVAL_AUTO_PROCUREMENT, true),
   SURVIVAL_STORAGE_SCAN_RADIUS: parseInteger(process.env.SURVIVAL_STORAGE_SCAN_RADIUS, 32),
   SURVIVAL_AUTO_CRAFTING: parseBoolean(process.env.SURVIVAL_AUTO_CRAFTING, true),
   SURVIVAL_AUTO_HARVESTING: parseBoolean(process.env.SURVIVAL_AUTO_HARVESTING, false),
+  SURVIVAL_AUTO_CLEAR_SITE: parseBoolean(process.env.SURVIVAL_AUTO_CLEAR_SITE, true),
   SURVIVAL_STRICT_MATERIALS: parseBoolean(process.env.SURVIVAL_STRICT_MATERIALS, false),
   SURVIVAL_CONTAINER_TIMEOUT_MS: parseInteger(process.env.SURVIVAL_CONTAINER_TIMEOUT_MS, 4000),
   SURVIVAL_CONTAINER_BLACKLIST_MS: parseInteger(process.env.SURVIVAL_CONTAINER_BLACKLIST_MS, 60000),
@@ -123,6 +128,13 @@ export const settings = {
 
 export function validateSettings() {
   const issues = [];
+  if (!settings.MC_HOST || !settings.MC_USERNAME || !settings.BOT_OWNER) {
+    if (!settings.ONBOARDING_COMPLETED) {
+      issues.push('System noch nicht eingerichtet (Setup ausstehend). Bitte Onboarding auf http://localhost:3080 abschließen.');
+    } else {
+      issues.push('Unvollständige Serverkonfiguration: MC_HOST, MC_USERNAME oder BOT_OWNER fehlt.');
+    }
+  }
   if (!['auto', 'hybrid_visual', 'rcon_visual', 'pure_physical'].includes(settings.BUILD_EXECUTION_MODE)) {
     issues.push(`Ungültiger BUILD_EXECUTION_MODE: ${settings.BUILD_EXECUTION_MODE}. Erlaubt: auto, hybrid_visual, rcon_visual, pure_physical`);
   }

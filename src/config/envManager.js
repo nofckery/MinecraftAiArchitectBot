@@ -20,6 +20,24 @@ export class EnvManager {
     return fs.existsSync(targetPath);
   }
 
+  isFullyConfigured(customPath = null) {
+    if (!this.hasEnvFile(customPath)) return false;
+    const s = this.getCurrentSettings();
+    if (!s.MC_HOST || typeof s.MC_HOST !== 'string' || !s.MC_HOST.trim()) return false;
+    if (!s.MC_USERNAME || typeof s.MC_USERNAME !== 'string' || !s.MC_USERNAME.trim()) return false;
+    if (!s.BOT_OWNER || typeof s.BOT_OWNER !== 'string' || !s.BOT_OWNER.trim()) return false;
+
+    // Dummy-Platzhalter abweisen
+    const dummyHosts = ['mein.minecraft-server.de', 'dein.server.de', 'example.com'];
+    const dummyUsers = ['BaumeisterKI', 'Player', 'DeinSpielerName'];
+
+    if (dummyHosts.includes(s.MC_HOST.trim().toLowerCase())) return false;
+    if (s.ONBOARDING_COMPLETED !== true && dummyUsers.includes(s.MC_USERNAME.trim())) return false;
+    if (s.ONBOARDING_COMPLETED !== true && dummyUsers.includes(s.BOT_OWNER.trim())) return false;
+
+    return s.ONBOARDING_COMPLETED === true;
+  }
+
   getCurrentSettings() {
     return {
       MC_HOST: settings.MC_HOST,
@@ -28,6 +46,8 @@ export class EnvManager {
       MC_AUTH: settings.MC_AUTH,
       MC_VERSION: settings.MC_VERSION === false ? 'auto' : (settings.MC_VERSION || 'auto'),
       BOT_OWNER: settings.BOT_OWNER,
+      ONBOARDING_COMPLETED: settings.ONBOARDING_COMPLETED,
+      AUTO_CONNECT_ON_START: settings.AUTO_CONNECT_ON_START,
       BUILD_EXECUTION_MODE: settings.BUILD_EXECUTION_MODE,
       ENABLE_GREEDY_FILL_OPTIMIZATION: settings.ENABLE_GREEDY_FILL_OPTIMIZATION,
       BUILD_OPERATIONS_PER_SECOND: settings.BUILD_OPERATIONS_PER_SECOND,
@@ -260,6 +280,8 @@ export class EnvManager {
       else if (key === 'MC_AUTH') settings.MC_AUTH = strVal;
       else if (key === 'MC_VERSION') settings.MC_VERSION = VersionResolver.normalizeVersion(strVal);
       else if (key === 'BOT_OWNER') settings.BOT_OWNER = strVal;
+      else if (key === 'ONBOARDING_COMPLETED') settings.ONBOARDING_COMPLETED = strVal.toLowerCase() === 'true' || strVal === '1';
+      else if (key === 'AUTO_CONNECT_ON_START') settings.AUTO_CONNECT_ON_START = strVal.toLowerCase() === 'true' || strVal === '1';
       else if (key === 'BUILD_EXECUTION_MODE') settings.BUILD_EXECUTION_MODE = strVal;
       else if (key === 'ENABLE_GREEDY_FILL_OPTIMIZATION') settings.ENABLE_GREEDY_FILL_OPTIMIZATION = strVal.toLowerCase() === 'true' || strVal === '1';
       else if (key === 'BUILD_OPERATIONS_PER_SECOND') settings.BUILD_OPERATIONS_PER_SECOND = parseInt(strVal, 10) || 12;

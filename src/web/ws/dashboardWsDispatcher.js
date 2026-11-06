@@ -71,15 +71,15 @@ export async function handleClientWsMessage(data, ws, context) {
 
   // Real-time camera look orientation
   if (type === 'manual_look') {
-    const isDelta = Boolean(data.isDelta || data.options?.isDelta);
+    const isDelta = Boolean(data.isDelta || data.options?.isDelta || (data.yaw === undefined && data.delta));
     const isDegrees = Boolean(data.isDegrees || data.options?.isDegrees);
     const yaw = data.yaw !== undefined ? data.yaw : data.delta?.dx;
     const pitch = data.pitch !== undefined ? data.pitch : data.delta?.dy;
-    manualController.look(yaw, pitch, { isDelta: isDelta || !!data.delta, isDegrees });
+    manualController.look(yaw, pitch, { isDelta, isDegrees });
     return;
   }
 
-  // Discrete user actions (attack, dig_start, dig_stop, place, select_slot, drop_item, swap_hands)
+  // Discrete user actions (attack, dig_start, dig_stop, place, select_slot, drop_item, swap_hands, use_item)
   if (type === 'manual_action') {
     const action = data.action;
     if (action === 'attack') {
@@ -99,6 +99,10 @@ export async function handleClientWsMessage(data, ws, context) {
       }
       const faceVector = data.targetFace || data.faceVector || null;
       await manualController.interactOrPlace(refBlock, faceVector);
+    } else if (action === 'use_item_start') {
+      manualController.startUsingItem();
+    } else if (action === 'use_item_stop') {
+      manualController.stopUsingItem();
     } else if (action === 'select_slot') {
       manualController.setQuickBarSlot(data.slot);
     } else if (action === 'drop_item') {
@@ -115,6 +119,75 @@ export async function handleClientWsMessage(data, ws, context) {
         } catch (err) {
           logger.debug(`[ManualAction] swap_hands Fehler: ${err.message}`);
         }
+      }
+    }
+    return;
+  }
+
+  // Public Minecraft Chat to server & players
+  if (type === 'send_chat' || type === 'chat_message') {
+    const text = (data.message || data.text || '').trim();
+    if (!text) return;
+    if (context.currentBot && typeof context.currentBot.chat === 'function') {
+      try {
+        context.currentBot.chat(text);
+        logger.info(`[Chat] Spieler im Gamemode hat gesendet: "${text}"`);
+      } catch (err) {
+        logger.warn(`[Chat] Fehler beim Senden: ${err.message}`);
+      }
+    } else {
+      context.recordChat('SYSTEM', 'Kann Chat-Nachricht nicht senden: Bot ist offline.');
+    }
+    return;
+  }
+
+  // Interactive full player & container inventory slot clicking
+  if (type === 'inventory_click') {
+    const slot = Number(data.slot);
+    const button = Number(data.button ?? 0); // 0=left, 1=right
+    const mode = Number(data.mode ?? 0); // 0=click, 1=shift-click, 4=drop
+    if (!Number.isNaN(slot) && context.currentBot) {
+      const win = context.currentBot.currentWindow || context.currentBot.inventory;
+      if (win && typeof context.currentBot.clickWindow === 'function') {
+        try {
+          await context.currentBot.clickWindow(slot, button, mode);
+          if (typeof context.sendTelemetry === 'function') {
+            context.sendTelemetry();
+          }
+        } catch (err) {
+          logger.debug(`[Inventory] clickWindow Fehler: ${err.message}`);
+        }
+      }
+    }
+    return;
+  }
+
+  // Close active container window
+  if (type === 'close_window') {
+    if (context.currentBot?.currentWindow) {
+      try {
+        context.currentBot.closeWindow(context.currentBot.currentWindow);
+        if (typeof context.sendTelemetry === 'function') {
+          context.sendTelemetry();
+        }
+      } catch (err) {
+        logger.debug(`[Inventory] closeWindow Fehler: ${err.message}`);
+      }
+    }
+    return;
+  }
+
+  // Respawn bot after death
+  if (type === 'respawn') {
+    if (context.currentBot && typeof context.currentBot.respawn === 'function') {
+      try {
+        context.currentBot.respawn();
+        logger.info('[Gamemode] Bot-Respawn erfolgreich ausgeführt.');
+        if (typeof context.sendTelemetry === 'function') {
+          context.sendTelemetry();
+        }
+      } catch (err) {
+        logger.warn(`[Gamemode] Respawn-Fehler: ${err.message}`);
       }
     }
     return;
@@ -582,9 +655,27 @@ export async function handleClientWsMessage(data, ws, context) {
       context.activeCanvas = canvas;
 
       const bounds = canvas.getBounds();
-      const siteInfo = context.architectAgent ? context.architectAgent.getEffectiveSiteInfo() : {
-        origin: { x: 0, y: 64, z: 0 }, width: bounds.width, depth: bounds.depth, height: bounds.height, facing: 'north'
-      };
+      let siteInfo;
+      if (context.architectAgent) {
+        const probed = context.architectAgent.getEffectiveSiteInfo(null, {
+          width: bounds.width,
+          depth: bounds.depth,
+          height: bounds.height
+        });
+        context.architectAgent.setCustomBounds({
+          minX: probed.origin.x,
+          minZ: probed.origin.z,
+          maxX: probed.origin.x + bounds.width - 1,
+          maxZ: probed.origin.z + bounds.depth - 1,
+          baseY: probed.origin.y,
+          facing: probed.facing || 'north'
+        });
+        siteInfo = context.architectAgent.getEffectiveSiteInfo();
+      } else {
+        siteInfo = {
+          origin: { x: 0, y: 64, z: 0 }, width: bounds.width, depth: bounds.depth, height: bounds.height, facing: 'north'
+        };
+      }
 
       if (context.architectAgent) {
         context.architectAgent.lastBuildState = {

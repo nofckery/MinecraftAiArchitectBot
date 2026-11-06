@@ -45,6 +45,7 @@ export function registerBaseRoutes(app, context) {
       res.json({
         success: true,
         hasEnvFile: envManager.hasEnvFile(),
+        isFullyConfigured: envManager.isFullyConfigured(),
         settings: envManager.getCurrentSettings(),
         serverRights: serverRights.getStatus(context.currentBot),
         versionMetadata,
@@ -69,6 +70,7 @@ export function registerBaseRoutes(app, context) {
       context.broadcast({
         type: 'settings_updated',
         hasEnvFile: envManager.hasEnvFile(),
+        isFullyConfigured: envManager.isFullyConfigured(),
         settings: envManager.getCurrentSettings(),
         reconnected: shouldReconnect
       });
@@ -85,7 +87,8 @@ export function registerBaseRoutes(app, context) {
 
   app.post('/api/setup', async (req, res) => {
     try {
-      const result = envManager.saveConfig(req.body || {});
+      const setupConfig = Object.assign({}, req.body || {}, { ONBOARDING_COMPLETED: true });
+      const result = envManager.saveConfig(setupConfig);
       if (req.body.reconnectBot !== false) {
         const activeBotClient = context.botClient || (await import('../../bot/botClient.js').catch(() => ({}))).botClient;
         if (activeBotClient && typeof activeBotClient.reconnect === 'function') {
@@ -95,6 +98,7 @@ export function registerBaseRoutes(app, context) {
       context.broadcast({
         type: 'settings_updated',
         hasEnvFile: envManager.hasEnvFile(),
+        isFullyConfigured: envManager.isFullyConfigured(),
         settings: envManager.getCurrentSettings()
       });
       res.json({

@@ -375,4 +375,98 @@ export class StructuralLinter {
 
     return lines.join('\n');
   }
+
+  /**
+   * Semantische Strukturanalyse für das LLM (Raum-, Material- & Zonen-Erkennung)
+   * Ermöglicht es der KI, importierte Schematics architektonisch zu "verstehen".
+   */
+  static analyzeSemantics(canvas) {
+    const bounds = canvas.getBounds();
+    if (bounds.count === 0) {
+      return {
+        bounds,
+        formattedSummary: 'Kein Bauwerk im Speicher geladen (leere Canvas).'
+      };
+    }
+
+    const counts = {};
+    const yDistribution = {};
+    const doors = [];
+    let windowsCount = 0;
+    let lightsCount = 0;
+
+    for (const key of canvas.getAllBlockKeys()) {
+      const b = canvas.getByKey(key);
+      if (!b || !b.name || b.name === 'air') continue;
+      const { x, y, z } = canvas.parseKey(key);
+
+      counts[b.name] = (counts[b.name] || 0) + 1;
+      yDistribution[y] = (yDistribution[y] || 0) + 1;
+
+      if (b.name.endsWith('_door')) {
+        const props = b.properties || {};
+        if (props.half !== 'upper') {
+          doors.push({ x, y, z, name: b.name, facing: props.facing || 'unbekannt' });
+        }
+      } else if (b.name.includes('glass') || b.name.includes('pane')) {
+        windowsCount++;
+      } else if (b.name.includes('torch') || b.name.includes('lantern') || b.name === 'glowstone' || b.name.includes('lamp')) {
+        lightsCount++;
+      }
+    }
+
+    const totalBlocks = bounds.count;
+    const sortedMaterials = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({
+        name,
+        count,
+        percent: Math.round((count / totalBlocks) * 100)
+      }));
+
+    // Erkennung von Dach-Zone (oberste Y-Ebenen mit Treppen/Stufen/Spitz zulaufend)
+    let roofStartY = Math.floor(bounds.minY + bounds.height * 0.6);
+    const roofMaterials = new Set();
+    for (let y = roofStartY; y <= bounds.maxY; y++) {
+      for (const key of canvas.getAllBlockKeys()) {
+        const { y: by } = canvas.parseKey(key);
+        if (by === y) {
+          const blk = canvas.getByKey(key);
+          if (blk && blk.name) roofMaterials.add(blk.name);
+        }
+      }
+    }
+
+    const topMatStr = sortedMaterials
+      .slice(0, 6)
+      .map(m => `${m.name} (${m.percent}%, ${m.count}x)`)
+      .join(', ');
+
+    const doorsStr = doors.length > 0
+      ? doors.map(d => `${d.name} bei (${d.x}, ${d.y}, ${d.z}, Blick: ${d.facing})`).join('; ')
+      : 'Keine Außentüren auf Bodenebene erkannt';
+
+    const formattedSummary = `
+Architektonische Baukörper-Analyse:
+- Gesamtabmessungen: Breite (X): ${bounds.width}, Höhe (Y): ${bounds.height}, Tiefe (Z): ${bounds.depth}
+- Bounding-Box: X[${bounds.minX}..${bounds.maxX}], Y[${bounds.minY}..${bounds.maxY}], Z[${bounds.minZ}..${bounds.maxZ}]
+- Gesamtblöcke: ${totalBlocks} Voxel
+- Hauptmaterialien: ${topMatStr}
+- Dachzone (ab Y=${roofStartY} bis Y=${bounds.maxY}): ${Array.from(roofMaterials).slice(0, 5).join(', ') || 'Flachdach/Solide'}
+- Eingänge & Türen: ${doorsStr}
+- Fenster & Glasflächen: ${windowsCount} Blöcke
+- Beleuchtung: ${lightsCount} Lichtquellen (Fackeln/Laternen)
+`.trim();
+
+    return {
+      bounds,
+      totalBlocks,
+      sortedMaterials,
+      doors,
+      windowsCount,
+      lightsCount,
+      roofStartY,
+      formattedSummary
+    };
+  }
 }

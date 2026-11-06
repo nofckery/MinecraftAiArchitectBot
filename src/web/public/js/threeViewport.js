@@ -138,13 +138,19 @@ function onThreePointerDown(event) {
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
-  const meshes = Array.from(voxelMeshMap.values());
-  const intersects = raycaster.intersectObjects(meshes, false);
+  const targets = (voxelGroup && voxelGroup.children.length > 0)
+    ? voxelGroup.children
+    : Array.from(voxelMeshMap.values());
+  const intersects = raycaster.intersectObjects(targets, false);
 
   if (intersects.length === 0) return;
 
   const hit = intersects[0];
-  const voxelData = hit.object.userData; // { x, y, z, name }
+  const voxelData = (hit.object.isInstancedMesh && hit.object.userData?.instanceData)
+    ? hit.object.userData.instanceData[hit.instanceId]
+    : hit.object.userData;
+
+  if (!voxelData) return;
 
   const txtBrushBlock = document.getElementById('txtBrushBlock');
 
@@ -316,18 +322,64 @@ export function renderVoxelPreview(data) {
   let maxY = 0;
   for (const b of blocks) {
     if (b.y > maxY) maxY = b.y;
-    const color = getBlockColor(b.name);
-    let mat = matCache.get(color);
-    if (!mat) {
-      mat = new THREE.MeshLambertMaterial({ color });
-      matCache.set(color, mat);
+  }
+
+  // Für Großprojekte (> 2500 Voxel) optimiertes InstancedMesh-Rendering nutzen
+  const useInstancing = blocks.length > 2500 && typeof THREE.InstancedMesh === 'function';
+
+  if (useInstancing) {
+    const colorGroups = new Map();
+    for (const b of blocks) {
+      const color = getBlockColor(b.name);
+      let list = colorGroups.get(color);
+      if (!list) {
+        list = [];
+        colorGroups.set(color, list);
+      }
+      list.push(b);
     }
 
-    const mesh = new THREE.Mesh(geom, mat);
-    mesh.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
-    mesh.userData = { x: b.x, y: b.y, z: b.z, name: b.name, properties: b.properties };
-    if (voxelGroup) voxelGroup.add(mesh);
-    voxelMeshMap.set(`${b.x},${b.y},${b.z}`, mesh);
+    const dummy = new THREE.Object3D();
+    for (const [color, groupBlocks] of colorGroups.entries()) {
+      let mat = matCache.get(color);
+      if (!mat) {
+        mat = new THREE.MeshLambertMaterial({ color });
+        matCache.set(color, mat);
+      }
+      const instMesh = new THREE.InstancedMesh(geom, mat, groupBlocks.length);
+      if (typeof THREE.DynamicDrawUsage !== 'undefined') {
+        instMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      }
+      const instanceData = [];
+
+      for (let i = 0; i < groupBlocks.length; i++) {
+        const b = groupBlocks[i];
+        dummy.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        instMesh.setMatrixAt(i, dummy.matrix);
+        instanceData.push({ x: b.x, y: b.y, z: b.z, name: b.name, properties: b.properties });
+      }
+
+      instMesh.instanceMatrix.needsUpdate = true;
+      instMesh.userData = { instanceData, isInstanced: true };
+      if (voxelGroup) voxelGroup.add(instMesh);
+    }
+  } else {
+    for (const b of blocks) {
+      const color = getBlockColor(b.name);
+      let mat = matCache.get(color);
+      if (!mat) {
+        mat = new THREE.MeshLambertMaterial({ color });
+        matCache.set(color, mat);
+      }
+
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
+      mesh.userData = { x: b.x, y: b.y, z: b.z, name: b.name, properties: b.properties };
+      if (voxelGroup) voxelGroup.add(mesh);
+      voxelMeshMap.set(`${b.x},${b.y},${b.z}`, mesh);
+    }
   }
 
   const ySliceSlider = document.getElementById('ySliceSlider');
@@ -433,12 +485,42 @@ export function handleVoxelDelta(msg) {
   }
 
   const previewStats = document.getElementById('previewStats');
-  if (previewStats) previewStats.textContent = `${voxelMeshMap.size} Voxel geladen`;
+  if (previewStats) {
+    const totalCount = (voxelGroup && voxelGroup.children.some(c => c.isInstancedMesh))
+      ? 'Voxel (Instanced) aktualisiert'
+      : `${voxelMeshMap.size} Voxel geladen`;
+    previewStats.textContent = totalCount;
+  }
 }
 
 export function applyYSlice(maxY) {
+  // 1. Reguläre Einzel-Meshes
   for (const mesh of voxelMeshMap.values()) {
     mesh.visible = mesh.userData.y <= maxY;
+  }
+
+  // 2. InstancedMeshes (Maßstabs-Update der Instanzmatrizen)
+  if (voxelGroup && typeof THREE !== 'undefined') {
+    const dummy = new THREE.Object3D();
+    for (const child of voxelGroup.children) {
+      if (child.isInstancedMesh && child.userData?.instanceData) {
+        let changed = false;
+        for (let i = 0; i < child.userData.instanceData.length; i++) {
+          const d = child.userData.instanceData[i];
+          if (d.y <= maxY) {
+            dummy.position.set(d.x + 0.5, d.y + 0.5, d.z + 0.5);
+            dummy.scale.set(1, 1, 1);
+          } else {
+            dummy.position.set(d.x + 0.5, d.y + 0.5, d.z + 0.5);
+            dummy.scale.set(0, 0, 0); // Voxel unsichtbar schrumpfen
+          }
+          dummy.updateMatrix();
+          child.setMatrixAt(i, dummy.matrix);
+          changed = true;
+        }
+        if (changed) child.instanceMatrix.needsUpdate = true;
+      }
+    }
   }
 }
 

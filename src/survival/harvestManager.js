@@ -252,6 +252,96 @@ export class HarvestManager {
       targetCount
     };
   }
+
+  /**
+   * Räumt störende Hindernisse (Bäume, Laub, Erdaufschüttungen) im Baufeld ab.
+   * Sortiert von oben nach unten (Y absteigend), um Einstürze zu verhindern.
+   *
+   * @param {Object} bot Mineflayer bot instance
+   * @param {Array<Object>} plannedBlocks Zielblöcke des Bauwerks
+   * @param {Object} options Optionen (maxBlocks, chatAlerts)
+   * @returns {Promise<{ clearedCount: number, remainingObstacles: number }>}
+   */
+  async clearObstacles(bot, plannedBlocks, options = {}) {
+    if (!bot || typeof bot.blockAt !== 'function' || !Array.isArray(plannedBlocks)) {
+      return { clearedCount: 0, remainingObstacles: 0 };
+    }
+
+    const maxBlocksToClear = options.maxBlocks || 300;
+    const chatAlerts = options.chatAlerts !== false;
+    const obstacles = [];
+
+    // Finde alle vorhandenen Welt-Blöcke, die nicht Luft und nicht bereits der Zielblock sind
+    for (const pb of plannedBlocks) {
+      const pos = new Vec3(Math.floor(pb.x), Math.floor(pb.y), Math.floor(pb.z));
+      const wb = bot.blockAt(pos);
+      if (!wb || !wb.name) continue;
+      const wName = wb.name.toLowerCase();
+
+      if (wName === 'air' || wName === 'cave_air' || wName === 'void_air') continue;
+
+      const targetName = (pb.name || pb.blockState?.name || '').toLowerCase();
+      // Falls der Block bereits genau die gewünschte Art hat, nicht abreißen
+      if (wName === targetName) continue;
+
+      // Unzerstörbare Blöcke niemals versuchen abzubauen (Bedrock, Portal, etc.)
+      if (wName === 'bedrock' || wName.includes('portal') || wName === 'barrier') continue;
+
+      obstacles.push(wb);
+    }
+
+    if (obstacles.length === 0) {
+      return { clearedCount: 0, remainingObstacles: 0 };
+    }
+
+    // Y absteigend sortieren (von oben nach unten abbauen, damit nichts auf den Bot fällt)
+    obstacles.sort((a, b) => b.position.y - a.position.y || a.position.distanceTo(bot.entity?.position || new Vec3(0, 0, 0)) - b.position.distanceTo(bot.entity?.position || new Vec3(0, 0, 0)));
+
+    const toProcess = obstacles.slice(0, maxBlocksToClear);
+    logger.info(`[HarvestManager] Baufeld-Rodung aktiv: ${obstacles.length} Hindernisse erkannt (räume bis zu ${toProcess.length})...`);
+    if (chatAlerts && typeof bot.chat === 'function') {
+      bot.chat(`[Bauplatz-Rodung] Entferne ${toProcess.length} störende Blöcke/Bäume vor dem Bau...`);
+    }
+
+    let clearedCount = 0;
+    for (const blk of toProcess) {
+      // Prüfe, ob Block währenddessen schon verschwunden ist
+      const currentBlk = bot.blockAt(blk.position);
+      if (!currentBlk || currentBlk.name === 'air') continue;
+
+      // Wenn zu weit weg, hinlaufen
+      if (bot.entity?.position && typeof bot.entity.position.distanceTo === 'function') {
+        const dist = bot.entity.position.distanceTo(blk.position);
+        if (dist > 3.8 && bot.pathfinder) {
+          try {
+            const goals = await getPathfinderGoals();
+            if (goals) {
+              await bot.pathfinder.goto(new goals.GoalNear(blk.position.x, blk.position.y, blk.position.z, 2.5));
+            }
+          } catch (navErr) {
+            logger.debug(`[HarvestManager] Konnte Hindernis bei ${blk.position} nicht anlaufen: ${navErr.message}`);
+            continue;
+          }
+        }
+      }
+
+      await this.prepareToolForBlock(bot, currentBlk);
+      try {
+        if (typeof bot.dig === 'function') {
+          await bot.dig(currentBlk);
+          clearedCount++;
+        }
+      } catch (digErr) {
+        logger.debug(`[HarvestManager] Fehler beim Roden von ${blk.name} bei ${blk.position}: ${digErr.message}`);
+      }
+    }
+
+    logger.info(`[HarvestManager] Baufeld-Rodung abgeschlossen: ${clearedCount} Hindernisse entfernt.`);
+    return {
+      clearedCount,
+      remainingObstacles: Math.max(0, obstacles.length - clearedCount)
+    };
+  }
 }
 
 export const harvestManager = new HarvestManager();

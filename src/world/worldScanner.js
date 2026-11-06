@@ -32,6 +32,10 @@ export class WorldScanner {
       }
     }
 
+    if (!bot || typeof bot.blockAt !== 'function') {
+      return [];
+    }
+
     const markers = [];
     const minX = Math.floor(centerPos.x - radius);
     const maxX = Math.floor(centerPos.x + radius);
@@ -53,7 +57,7 @@ export class WorldScanner {
     return markers;
   }
 
-  static scanBuildSite(bot, ownerPlayer = null) {
+  static scanBuildSite(bot, ownerPlayer = null, customDimensions = null) {
     // 1. Spielerposition oder Bot-Position ermitteln
     let targetEntity = null;
     if (ownerPlayer && bot?.players?.[ownerPlayer]?.entity) {
@@ -68,8 +72,8 @@ export class WorldScanner {
     // 2. Suche nach Wolle-Markern
     const markers = WorldScanner.findWoolMarkers(bot, pos, 24);
     let origin = null;
-    let width = 14;
-    let depth = 14;
+    let width = customDimensions?.width ? Math.max(1, customDimensions.width) : 14;
+    let depth = customDimensions?.depth ? Math.max(1, customDimensions.depth) : 14;
     let groundY = Math.floor(pos.y);
 
     if (markers.length >= 2) {
@@ -93,7 +97,7 @@ export class WorldScanner {
       origin = { x: minX, y: groundY, z: minZ };
       logger.info(`Wolle-Marker erkannt! Baufläche: ${width}x${depth} Blöcke bei (${origin.x}, ${origin.y}, ${origin.z}).`);
     } else {
-      // Standard: 14x14 Grundstück 3 Blöcke vor dem Spieler
+      // Standard: Grundstück dynamisch vor dem Spieler/Bot zentrieren
       let ox = Math.floor(pos.x);
       let oz = Math.floor(pos.z);
 
@@ -112,34 +116,38 @@ export class WorldScanner {
       }
 
       origin = { x: ox, y: groundY, z: oz };
-      logger.info(`Keine Marker gefunden. Nutze Standard-Grundstück ${width}x${depth} vor dem Spieler (${facing}).`);
+      logger.info(`Keine Marker gefunden. Baufeld automatisch an Maße angepasst: ${width}x${depth} vor Spieler (${facing}).`);
     }
 
-    // 3. Terrain-Höhenkarte scannen
+    // 3. Terrain-Höhenkarte scannen (nur falls bot.blockAt verfügbar)
     const terrainMap = {};
-    for (let x = origin.x; x < origin.x + width; x++) {
-      for (let z = origin.z; z < origin.z + depth; z++) {
-        let foundY = groundY;
-        for (let y = groundY + 5; y >= groundY - 12; y--) {
-          const b = bot.blockAt(new Vec3(x, y, z));
-          if (b && !b.name.includes('air') && !b.name.includes('leaves') && !b.name.includes('log')) {
-            foundY = y;
-            break;
+    if (bot && typeof bot.blockAt === 'function') {
+      for (let x = origin.x; x < origin.x + width; x++) {
+        for (let z = origin.z; z < origin.z + depth; z++) {
+          let foundY = groundY;
+          for (let y = groundY + 5; y >= groundY - 12; y--) {
+            const b = bot.blockAt(new Vec3(x, y, z));
+            if (b && !b.name.includes('air') && !b.name.includes('leaves') && !b.name.includes('log')) {
+              foundY = y;
+              break;
+            }
           }
+          terrainMap[`${x},${z}`] = foundY - groundY;
         }
-        terrainMap[`${x},${z}`] = foundY - groundY;
       }
     }
 
     // 4. Nachbarschafts-Paletten scannen
     const neighborhoodCounts = {};
-    const sampleRadius = 16;
-    for (let dx = -sampleRadius; dx <= sampleRadius; dx += 2) {
-      for (let dz = -sampleRadius; dz <= sampleRadius; dz += 2) {
-        for (let dy = -4; dy <= 8; dy += 2) {
-          const b = bot.blockAt(new Vec3(origin.x + dx, origin.y + dy, origin.z + dz));
-          if (b && !b.name.includes('air') && !b.name.includes('grass_block') && !b.name.includes('dirt')) {
-            neighborhoodCounts[b.name] = (neighborhoodCounts[b.name] || 0) + 1;
+    if (bot && typeof bot.blockAt === 'function') {
+      const sampleRadius = 16;
+      for (let dx = -sampleRadius; dx <= sampleRadius; dx += 2) {
+        for (let dz = -sampleRadius; dz <= sampleRadius; dz += 2) {
+          for (let dy = -4; dy <= 8; dy += 2) {
+            const b = bot.blockAt(new Vec3(origin.x + dx, origin.y + dy, origin.z + dz));
+            if (b && !b.name.includes('air') && !b.name.includes('grass_block') && !b.name.includes('dirt')) {
+              neighborhoodCounts[b.name] = (neighborhoodCounts[b.name] || 0) + 1;
+            }
           }
         }
       }

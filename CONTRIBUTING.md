@@ -67,7 +67,7 @@ The project is structured into modular layers designed for strict separation of 
 | `src/survival/` | **Survival Subsystem** | Chest Manager (32m container scanning & capacity-checked withdrawal), Material Procurement, Scaffold Manager (dynamic placement & cleanup of scaffolding for high-rise builds), Harvest Manager. |
 | `src/web/` | **Mission Control Cockpit** | Express + WebSocket server (`dashboardServer.js`), Three.js 3D CAD Editor, 2D Topological Map, Manual Cockpit, Model Cockpit, Area Map, Multi-Monitor Popout Viewer. |
 | `src/world/` | **Perception Layer** | World Scanner (bounding-box detection via wool markers, terrain relief analysis), Undo Manager (`undoManager.js` rollback logging). |
-| `test/` | **Verification Suite** | 19 standardized offline test suites covering 690+ assertions across all modules. |
+| `test/` | **Verification Suite** | 22 standardized offline test suites covering 775 assertions across all modules (100% PASS). |
 
 ---
 
@@ -106,25 +106,31 @@ The project is structured into modular layers designed for strict separation of 
 ## 6. Testing Requirements & Verification
 
 All contributions must maintain our high bar of software quality:
-- **100% Pass Rate**: `npm test` must pass all 19 test suites without errors.
+- **100% Pass Rate**: `npm test` must pass all 22 test suites without errors.
 - **Offline Self-Containment**: Tests must never rely on an external Minecraft server, active internet connection, or live paid API keys. Use mock sockets, dry-run executors, and simulated HTTP responses.
 - **New Feature Coverage**: When introducing new ArchPrimitives, schematic formats, or API routes, write corresponding tests in the respective test suite under `test/`.
 
 Available test commands:
 ```bash
-npm test                 # Run all 19 standard test suites
-npm run test:dry         # Geometry, procedural synthesis, and LLM router tests
-npm run test:mission     # Mission Control WebSocket, CAD, and Session Handoff tests
-npm run test:milestone1  # Chest logistics & Minecraft 26.3 compatibility tests
-npm run test:milestone2  # Threat Manager, tactical retreat, and sleep tests
-npm run test:vault       # AES-256-GCM Credential Vault tests
-npm run test:model       # Safe Probe Worker & Model Hot-Reload tests
-npm run test:device      # RFC 8628 Device Flow & Local BFF tests
-npm run test:settings    # Onboarding Wizard & Settings tests
-npm run test:builder     # Builder modularization tests
-npm run test:scaffold    # Scaffolding manager tests
-npm run test:gamemode    # All manual gamemode tests (Backend, WS, Frontend, Integration)
-npm run test:popout      # Multi-monitor popout tests
+npm test                      # Run all 22 standard test suites (775 tests)
+npm run test:dry              # Geometry, procedural synthesis, and LLM router tests
+npm run test:mission          # Mission Control WebSocket, CAD, and Session Handoff tests
+npm run test:milestone1       # Chest logistics & Minecraft 26.3 compatibility tests
+npm run test:milestone2       # Threat Manager, tactical retreat, and sleep tests
+npm run test:vault            # AES-256-GCM Credential Vault tests
+npm run test:model            # Safe Probe Worker & Model Hot-Reload tests
+npm run test:device           # RFC 8628 Device Flow & Local BFF tests
+npm run test:settings         # Onboarding Wizard & Settings tests
+npm run test:cockpit          # Cockpit backend API tests
+npm run test:msa              # Microsoft Auth integration tests
+npm run test:builder          # Builder modularization tests
+npm run test:scaffold         # Scaffolding manager tests
+npm run test:translator       # Viewer state translator tests
+npm run test:gamemode         # All manual gamemode tests (Backend, WS, Frontend, Integration, Perfection)
+npm run test:gamemode-perfection # Gamemode perfection, HUD & pitch-clamp tests
+npm run test:popout           # Multi-monitor popout tests
+npm run test:version          # Live protocol & version compatibility tests (1.20 - 26.3)
+npm run test:schem            # Universal Schematic SOTA & chat tests
 ```
 
 ---

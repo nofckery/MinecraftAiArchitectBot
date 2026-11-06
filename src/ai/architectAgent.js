@@ -95,11 +95,11 @@ export class ArchitectAgent extends EventEmitter {
     logger.info(`Benutzerdefinierte Baufläche festgelegt: ${width}x${depth} Blöcke bei (${minX}, ${groundY}, ${minZ}), Ausrichtung: ${facing}`);
   }
 
-  getEffectiveSiteInfo(username = null) {
-    if (this.customSiteInfo) {
+  getEffectiveSiteInfo(username = null, customDimensions = null) {
+    if (this.customSiteInfo && !customDimensions) {
       return this.customSiteInfo;
     }
-    return worldScanner.scanBuildSite(this.bot, username);
+    return worldScanner.scanBuildSite(this.bot, username, customDimensions);
   }
 
   async createPitch(userRequest, siteInfo) {
@@ -422,17 +422,18 @@ WICHTIG:
 
     logger.info(`Remixe importiertes Bauwerk mit Auftrag: "${instruction}"...`);
 
+    const semantics = StructuralLinter.analyzeSemantics(canvas);
+
     const prompt = `
 Du modifizierst oder erweiterst ein bereits in der 'canvas' existierendes Bauwerk!
 Auftrag: "${instruction}"
-Aktuelle Bounding-Box des Bauwerks:
-- X: 0 bis ${bounds.width - 1} (Breite: ${bounds.width})
-- Y: 0 bis ${bounds.height - 1} (Höhe: ${bounds.height})
-- Z: 0 bis ${bounds.depth - 1} (Tiefe: ${bounds.depth})
-- Bereits vorhandene Blöcke: ${bounds.count}
+
+Detaillierte Analyse des geladenen Bauwerks:
+${semantics.formattedSummary}
 
 ANWEISUNG:
 - Überschreibe nicht das gesamte Gebäude! Ergänze gezielt die geforderten Anbauten (z. B. Fundament, Schornstein, Balkon, Dachdetails, Inneneinrichtung).
+- Nutze die bestehenden Materialien und Stile des Bauwerks, um harmonische Übergänge zu schaffen.
 - Nutze 'canvas' und 'arch'.
 `.trim();
 

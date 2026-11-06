@@ -162,6 +162,104 @@
           </div>
         </div>
       </div>
+
+      <!-- In-Game Chat Overlay (Bottom-Left) -->
+      <div id="gamemodeChatArea" class="gamemode-chat-area">
+        <div id="gamemodeChatLog" class="gamemode-chat-log" role="log" aria-live="polite"></div>
+        <div id="gamemodeChatInputContainer" class="gamemode-chat-input-container hidden">
+          <span class="chat-prompt-prefix">&gt;</span>
+          <input type="text" id="gamemodeChatInput" class="gamemode-chat-input" placeholder="Nachricht an den Server oder /Befehl..." autocomplete="off" maxlength="256">
+          <button type="button" id="btnSendGamemodeChat" class="btn-chat-send" title="Senden (Enter)">Senden</button>
+        </div>
+      </div>
+
+      <!-- Full Minecraft Inventory Modal (Key: E) -->
+      <div id="gamemodeInventoryModal" class="gamemode-inventory-modal hidden" role="dialog" aria-modal="true" aria-label="Minecraft Inventar">
+        <div class="inventory-card">
+          <div class="inventory-header">
+            <span class="inventory-title">📦 INVENTAR & AUSRÜSTUNG</span>
+            <div class="inventory-header-hints">
+              <span class="inv-shortcut-hint">Klick: Nehmen/Legen | Shift+Klick: Schnelltransfer | Q: Ablegen</span>
+              <button type="button" id="btnCloseInventory" class="btn-inv-close" title="Schließen (E / ESC)">✕</button>
+            </div>
+          </div>
+
+          <!-- Optional Container Box (Active Chest / Table / etc.) -->
+          <div id="inventoryContainerSection" class="inv-section container-section hidden">
+            <div class="inv-section-title" id="invContainerTitle">Kiste</div>
+            <div id="invContainerGrid" class="inv-grid container-grid"></div>
+          </div>
+
+          <!-- Upper Row: Armor, Offhand & Quick-Craft / Character -->
+          <div class="inv-upper-row">
+            <div class="inv-equipment-group">
+              <span class="inv-group-label">Rüstung & Nebenhand</span>
+              <div class="inv-equipment-slots">
+                <div class="inv-slot armor-slot" data-slot="5" id="invSlot5" title="Helm"><span class="slot-bg-icon">🪖</span><span class="slot-count"></span></div>
+                <div class="inv-slot armor-slot" data-slot="6" id="invSlot6" title="Brustpanzer"><span class="slot-bg-icon">🥋</span><span class="slot-count"></span></div>
+                <div class="inv-slot armor-slot" data-slot="7" id="invSlot7" title="Hose"><span class="slot-bg-icon">👖</span><span class="slot-count"></span></div>
+                <div class="inv-slot armor-slot" data-slot="8" id="invSlot8" title="Stiefel"><span class="slot-bg-icon">👢</span><span class="slot-count"></span></div>
+                <div class="inv-slot offhand-slot" data-slot="45" id="invSlot45" title="Zweithand (F)"><span class="slot-bg-icon">🛡️</span><span class="slot-count"></span></div>
+              </div>
+            </div>
+
+            <div class="inv-quick-actions">
+              <span class="inv-group-label">Schnellaktionen</span>
+              <div class="inv-actions-buttons">
+                <button type="button" id="btnInvDropHeld" class="btn-micro" title="Ausgewähltes Item wegwerfen (Q)">Item wegwerfen (Q)</button>
+                <button type="button" id="btnInvSwapHands" class="btn-micro" title="Haupt- und Nebenhand tauschen (F)">Hand tauschen (F)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Main Inventory (3 rows x 9 slots = 27 slots: 9..35) -->
+          <div class="inv-section">
+            <span class="inv-group-label">Hauptinventar</span>
+            <div id="invMainGrid" class="inv-grid main-grid"></div>
+          </div>
+
+          <!-- Hotbar Inventory (1 row x 9 slots = 9 slots: 36..44) -->
+          <div class="inv-section hotbar-section">
+            <span class="inv-group-label">Schnellzugriffsleiste (Hotbar)</span>
+            <div id="invHotbarGrid" class="inv-grid hotbar-grid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- In-Game Pause Menu (ESC) -->
+      <div id="gamemodePauseMenu" class="gamemode-pause-menu hidden" role="dialog" aria-modal="true" aria-label="Spiel pausiert">
+        <div class="pause-menu-card">
+          <div class="pause-menu-title">SPIEL PAUSIERT</div>
+          <div class="pause-menu-buttons">
+            <button type="button" id="btnResumeGame" class="btn-pause-primary">▶ Zurück zum Spiel</button>
+            <button type="button" id="btnOpenInventoryFromPause" class="btn-pause-secondary">🎒 Inventar öffnen (E)</button>
+            <button type="button" id="btnOpenChatFromPause" class="btn-pause-secondary">💬 Chat öffnen (T)</button>
+            <div class="pause-sensitivity-setting">
+              <label for="sliderMouseSensitivity">Maus-Empfindlichkeit: <span id="lblMouseSensitivity">100%</span></label>
+              <input type="range" id="sliderMouseSensitivity" min="20" max="250" value="100" step="5">
+            </div>
+            <button type="button" id="btnExitFromPause" class="btn-pause-danger">✕ Gamemode beenden & Standby</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Minecraft Death Overlay -->
+      <div id="gamemodeDeathScreen" class="gamemode-death-screen hidden" role="alertdialog">
+        <div class="death-screen-card">
+          <h1 class="death-title">Du bist gestorben!</h1>
+          <p class="death-subtitle">BaumeisterKI benötigt einen Respawn</p>
+          <button type="button" id="btnGamemodeRespawn" class="btn-respawn">Wiederbeleben</button>
+        </div>
+      </div>
+
+      <!-- Floating Held Item Cursor -->
+      <div id="gamemodeHeldItemCursor" class="gamemode-held-item-cursor hidden">
+        <span class="held-icon"></span>
+        <span class="held-count"></span>
+      </div>
+
+      <!-- Item Hover Tooltip -->
+      <div id="inventoryItemTooltip" class="inventory-item-tooltip hidden"></div>
     </div>
   </div>
 
@@ -174,7 +272,8 @@
       enterGamemode,
       exitGamemode,
       handleTelemetryUpdate,
-      handleGamemodeState
+      handleGamemodeState,
+      handleIncomingChat
     } from './js/manualCockpit.js';
 
     let broadcast = null;
@@ -211,6 +310,8 @@
       if (!msg) return;
       if (msg.type === 'bot_telemetry') {
         handleTelemetryUpdate(msg);
+      } else if (msg.type === 'chat_log') {
+        handleIncomingChat(msg);
       } else if (msg.type === 'manual_control_state') {
         handleGamemodeState(msg);
       } else if (msg.type === 'status' && msg.viewerPort && viewerFrame) {

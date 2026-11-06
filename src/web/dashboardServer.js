@@ -287,7 +287,8 @@ export class DashboardServer {
         effectiveMode: worldExecutor.resolveMode(settings.BUILD_EXECUTION_MODE, this.currentBot),
         serverRights: serverRights.getStatus(this.currentBot),
         hasEnvFile: envManager.hasEnvFile(),
-        username: this.currentBot?.username || settings.MC_USERNAME || 'BaumeisterKI'
+        isFullyConfigured: envManager.isFullyConfigured(),
+        username: this.currentBot?.username || settings.MC_USERNAME || ''
       }));
 
       // Initialen Gamemode-Status an neu verbundenen Client senden
@@ -421,6 +422,18 @@ export class DashboardServer {
     }
     this.currentBot = bot;
     this.startViewer(bot);
+
+    // Reaktive Event-Trigger für verzögerungsfreie HUD & Inventar-Synchronisation
+    try {
+      if (bot.inventory && typeof bot.inventory.on === 'function') {
+        bot.inventory.on('updateSlot', () => this.sendTelemetry());
+      }
+      bot.on('windowOpen', () => this.sendTelemetry());
+      bot.on('windowClose', () => this.sendTelemetry());
+      bot.on('health', () => this.sendTelemetry());
+      bot.on('death', () => this.sendTelemetry());
+      bot.on('respawn', () => this.sendTelemetry());
+    } catch {}
 
     // Initiales Karten-Raster broadcasten
     setTimeout(() => {
@@ -599,6 +612,11 @@ export class DashboardServer {
       controls: manualController.getActiveControls()
     };
 
+    // 4. Full player & container inventory data
+    const fullInventory = (typeof manualController.getFullInventory === 'function')
+      ? manualController.getFullInventory()
+      : null;
+
     const telemetryMsg = {
       type: 'bot_telemetry',
       pos,
@@ -615,6 +633,7 @@ export class DashboardServer {
       username: bot?.username || settings.MC_USERNAME || 'BaumeisterKI',
       manualControl,
       hotbar,
+      fullInventory,
       raycast
     };
 

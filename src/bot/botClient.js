@@ -1,8 +1,8 @@
+import { VersionResolver } from '../config/versionResolver.js';
 import mineflayer from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
 const { pathfinder, Movements } = pathfinderPkg;
 import { settings } from '../config/settings.js';
-import { VersionResolver } from '../config/versionResolver.js';
 import { logger } from '../utils/logger.js';
 import { ArchitectAgent } from '../ai/architectAgent.js';
 import { ChatController } from './chatController.js';
@@ -98,6 +98,12 @@ export class BotClient {
   }
 
   async initBot() {
+    if (!settings.MC_HOST || !settings.MC_USERNAME || !settings.BOT_OWNER) {
+      logger.warn('[BotClient] Verbindungsaufbau übersprungen: Keine spezifischen Nutzer- und Serverdaten konfiguriert (MC_HOST, MC_USERNAME oder BOT_OWNER fehlt).');
+      this.broadcastState('STANDBY', false);
+      return;
+    }
+
     logger.info(`Verbinde zu Minecraft-Server ${settings.MC_HOST}:${settings.MC_PORT} als '${settings.MC_USERNAME}'...`);
 
     // 26.3 Kompatibilitäts-Shims & Versionsauflösung anwenden

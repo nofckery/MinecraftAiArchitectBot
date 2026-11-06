@@ -34,10 +34,13 @@ export class VersionResolver {
 
   /**
    * Applies runtime compatibility checks without mutating external packages or disk files.
+   * Shims minecraft-data, mineflayer (testedVersions & latestSupportedVersion),
+   * and minecraft-protocol (supportedVersions) cleanly in Node.js memory.
    * @returns {boolean} True indicating compatibility layer is active.
    */
   static applyCompatibilityShims() {
     try {
+      // 1. In-Memory Shim für minecraft-data
       if (dataPc?.pc?.[this.COMPATIBLE_BASE_VERSION] && !dataPc.pc[this.TARGET_VERSION]) {
         const base = dataPc.pc[this.COMPATIBLE_BASE_VERSION];
         const target = Object.assign({}, base);
@@ -45,7 +48,8 @@ export class VersionResolver {
           version: this.PROTOCOL_VERSION,
           minecraftVersion: this.TARGET_VERSION,
           majorVersion: this.COMPATIBLE_BASE_VERSION,
-          releaseType: 'release'
+          releaseType: 'release',
+          dataVersion: this.DATA_VERSION
         };
 
         try { target.protocol = require('./data/26.3/protocol.json'); } catch { target.protocol = base.protocol; }
@@ -58,6 +62,60 @@ export class VersionResolver {
 
         dataPc.pc[this.TARGET_VERSION] = target;
       }
+
+      // 2. In-Memory Shim für Mineflayer Version-Modul
+      try {
+        const mfVersion = require('mineflayer/lib/version');
+        if (mfVersion && Array.isArray(mfVersion.testedVersions)) {
+          if (!mfVersion.testedVersions.includes(this.TARGET_VERSION)) {
+            mfVersion.testedVersions.push(this.TARGET_VERSION);
+          }
+          mfVersion.latestSupportedVersion = this.TARGET_VERSION;
+        }
+      } catch (mfVerErr) {
+        logger.debug(`[VersionResolver] Mineflayer version shim Hinweis: ${mfVerErr.message}`);
+      }
+
+      // 3. In-Memory Shim für Minecraft-Protocol Versions-Whitelist
+      try {
+        const protoVersion = require('minecraft-protocol/src/version');
+        if (protoVersion && Array.isArray(protoVersion.supportedVersions)) {
+          if (!protoVersion.supportedVersions.includes(this.TARGET_VERSION)) {
+            protoVersion.supportedVersions.push(this.TARGET_VERSION);
+          }
+        }
+        if (minecraftProtocol && Array.isArray(minecraftProtocol.supportedVersions)) {
+          if (!minecraftProtocol.supportedVersions.includes(this.TARGET_VERSION)) {
+            minecraftProtocol.supportedVersions.push(this.TARGET_VERSION);
+          }
+        }
+      } catch (protoVerErr) {
+        logger.debug(`[VersionResolver] Minecraft-Protocol version shim Hinweis: ${protoVerErr.message}`);
+      }
+
+      // 4. Mineflayer Loader & createBot Refresh
+      // Falls mineflayer bereits vor diesem Aufruf importiert/geladen wurde, hat loader.js
+      // latestSupportedVersion als lokale lexikalische Konstante gebunden.
+      // Durch Bereinigen des require.cache für loader.js und Neuladen wird createBot
+      // mit der neuen Version 26.3 (Protocol 777) re-evaluiert.
+      try {
+        const loaderPath = require.resolve('mineflayer/lib/loader');
+        if (require.cache[loaderPath]) {
+          delete require.cache[loaderPath];
+          const freshLoader = require('mineflayer/lib/loader');
+          const mfInstance = require('mineflayer');
+          if (mfInstance && freshLoader?.createBot) {
+            mfInstance.createBot = freshLoader.createBot;
+            mfInstance.latestSupportedVersion = this.TARGET_VERSION;
+            if (Array.isArray(mfInstance.testedVersions) && !mfInstance.testedVersions.includes(this.TARGET_VERSION)) {
+              mfInstance.testedVersions.push(this.TARGET_VERSION);
+            }
+          }
+        }
+      } catch (loaderErr) {
+        logger.debug(`[VersionResolver] Mineflayer loader refresh Hinweis: ${loaderErr.message}`);
+      }
+
       if (!this._shimsApplied) {
         logger.info(`[VersionResolver] Kompatibilitätsmodus für ${this.TARGET_VERSION} aktiv (Protocol ${this.PROTOCOL_VERSION}, Basis ${this.COMPATIBLE_BASE_VERSION}).`);
       }
@@ -316,5 +374,8 @@ export class VersionResolver {
     };
   }
 }
+
+// Kompatibilitäts-Shims für 26.3 / Protocol 777 sofort beim Laden des Moduls initialisieren
+VersionResolver.applyCompatibilityShims();
 
 export const versionResolver = VersionResolver;

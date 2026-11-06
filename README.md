@@ -3,18 +3,21 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-68a063?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js Version" />
   <img src="https://img.shields.io/badge/Minecraft-1.20.4%20--%2026.3-3d85c6?style=for-the-badge&logo=minecraft&logoColor=white" alt="Minecraft Version" />
-  <img src="https://img.shields.io/badge/Test_Suites-19%2F19%20PASS%20(690%2B%20Tests)-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Tests PASS" />
-  <img src="https://img.shields.io/badge/Survival-Ready%20v2.1-success?style=for-the-badge&logo=shield&logoColor=white" alt="Survival Ready" />
+  <img src="https://img.shields.io/badge/Protocol-777%20Ready-blueviolet?style=for-the-badge&logo=curseforge&logoColor=white" alt="Protocol 777 Ready" />
+  <img src="https://img.shields.io/badge/Test_Suites-22%2F22%20PASS%20(775%20Tests)-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="775 Tests PASS" />
+  <img src="https://img.shields.io/badge/Survival-Autonomous%20v2.1-success?style=for-the-badge&logo=shield&logoColor=white" alt="Survival Ready" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT" />
 </p>
 
-Ein autonomer, modularer und extrem ressourceneffizienter **Minecraft-Architekt-Bot** in modernem Node.js (ES Modules, Node >= 20). Das System übersetzt natürliche Sprachbefehle, In-Game-Wollmarkierungen und Eingaben aus einem browserbasierten 3D-CAD-Studio in statisch geprüfte, ästhetisch anspruchsvolle Minecraft-Bauwerke — **vollständig survival-fähig auf echten Minecraft-Servern (Version 1.20.4 bis 26.3 / Protokoll 777)**.
+Ein autonomer, extrem ressourceneffizienter **Minecraft-Architekt- & Bau-Bot** in modernem Node.js (ES Modules, Node >= 20). Das System übersetzt natürliche Sprachbefehle, In-Game-Wollmarkierungen und Eingaben aus einem browserbasierten 3D-CAD-Studio in statisch geprüfte, ästhetisch anspruchsvolle Minecraft-Bauwerke — **vollständig survival-fähig auf echten Minecraft-Servern (Version 1.20.4 bis 26.3 / Protokoll 777)**.
+
+Mit integriertem **First-Person Gamemode Cockpit (WASD & Maus-Steuerung)**, **Universellem Schematic Hub (.schem, .litematic, .nbt)**, **automatischer Kisten-Logistik**, **Mob-Verteidigung**, **dynamischem Gerüstbau** und **Multi-Provider KI-Router** mit Zero-Key Notfall-Gateway.
 
 ---
 
 ## ⚡ Schnellanleitung für Entwickler & Freunde (Quickstart in 4 Minuten)
 
-Du möchtest am Projekt mitarbeiten oder den Bot sofort ausprobieren? Folge diesen vier Schritten:
+Du möchtest am Projekt mitarbeiten oder den Bot sofort ausprobieren? Folge diesen fünf Schritten:
 
 ```bash
 # 1. Repository klonen
@@ -30,36 +33,79 @@ Copy-Item .env.example .env
 # Linux / macOS:
 cp .env.example .env
 
-# 4. Gesamte Testsuite verifizieren (100% offline, kein Server nötig)
+# 4. Gesamte Testsuite verifizieren (100% offline, kein Server nötig!)
 npm test
 
-# 5. Bot starten
+# 5. Bot & Web-Dashboard starten
 npm start
 ```
 
 > [!TIP]
 > **Sofort startklar ohne API-Keys (Zero-Key Notfall-Gateway):**
-> Du brauchst beim ersten Start **keine** kostenpflichtigen Tokens oder Kreditkarten! Der Bot besitzt eingebaute Fallback-Gateways und schaltet bei Bedarf automatisch auf kostenlose Modelle um.
+> Du brauchst beim ersten Start **keine** kostenpflichtigen Tokens oder Kreditkarten! Der Bot besitzt eingebaute Fallback-Gateways und schaltet bei Bedarf automatisch auf kostenlose Modelle um. Optional kannst du dich im Web-Dashboard via GitHub 1-Click Device Flow anmelden.
+
+---
+
+## 🌟 Die 6 Kernsäulen des Projekts
+
+```text
+ ┌─────────────────────────────────────────────────────────────────────────────┐
+ │  1. 🧠 KOGNITIVE KI-ARCHITEKTUR & MULTI-PROVIDER KASKADE                    │
+ │     • Zero-Key Notfall-Gateway (Kilo AI / LLM7)                             │
+ │     • Multi-Provider Failover: Cerebras, Groq, Mistral, Gemini, GitHub      │
+ │     • Lokale Modelle: Ollama, LM Studio, LocalAI via Auto-Discovery         │
+ │     • 100% sichere node:vm Sandbox für deterministische Code-Synthese       │
+ ├─────────────────────────────────────────────────────────────────────────────┤
+ │  2. 🎮 FIRST-PERSON COCKPIT / MANUELLER GAMEMODE                            │
+ │     • Volle First-Person Kontrolle direkt im Browser (WASD, Maus-Look)      │
+ │     • Echtes Minecraft HUD: Herzen, Hunger, Rüstung, Sauerstoffblasen        │
+ │     • 36-Slot Interaktives Inventar, Quickbar-Auswahl, Item-Drop & Verzehr  │
+ │     • Live-Ingame-Chat & Server-Slash-Befehle direkt aus dem Web-Overlay    │
+ ├─────────────────────────────────────────────────────────────────────────────┤
+ │  3. 📐 3D-CAD-STUDIO & SCHEMATIC HUB                                        │
+ │     • Browserbasiertes Three.js 3D Voxel-Studio mit Schicht-Inspektion (Y)  │
+ │     • Universal-Unterstützung: .schem (WorldEdit), .litematic & .nbt        │
+ │     • Automatische Baufeld-Dimensionierung & Zentrierung vor dem Spieler    │
+ │     • Instant Holz-Palette-Swapper (erhält facing/half/shape zu 100%)       │
+ ├─────────────────────────────────────────────────────────────────────────────┤
+ │  4. 🛡️ VOLLSTÄNDIGE SURVIVAL-AUTONOMIE                                      │
+ │     • Phase 0 Rodung: Entfernt autonom störendes Terrain & Vegetation       │
+ │     • Kisten-Beschaffung: Sucht Materialien selbstständig in Behältern (32m)│
+ │     • ThreatManager: Wehrt Monster mit Schwert & Schild ab, heilt & flieht  │
+ │     • ScaffoldManager: Baut temporäre Gerüste für hohe Wände & baut sie ab  │
+ │     • SleepController: Geht nachts schlafen oder weicht temporär aus        │
+ ├─────────────────────────────────────────────────────────────────────────────┤
+ │  5. 🔄 1-ACCOUNT SESSION HANDOFF                                            │
+ │     • Nur 1 Minecraft-Account vorhanden? Bot pausiert automatisch bei Join  │
+ │     • Sichert aktuellen Bauzustand exakt ab und geht in Ruhezustand         │
+ │     • Sobald du den Server verlässt, reconnected der Bot & baut weiter      │
+ ├─────────────────────────────────────────────────────────────────────────────┤
+ │  6. 🔒 ENTERPRISE SICHERHEIT & 100% OFFLINE QS                              │
+ │     • AES-256-GCM Credential Vault (keine Klartext-Tokens auf Festplatte)   │
+ │     • 22 automatisierte Testsuiten (775 Tests), 100% offline & deterministisch│
+ └─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 📖 Inhaltsverzeichnis
 
 1. [Systemarchitektur & Schichten](#1-systemarchitektur--schichten)
-2. [Installation & Voraussetzungen](#2-installation--voraussetzungen)
-3. [Konfiguration (.env Referenz)](#3-konfiguration-env-referenz)
-4. [Ausführen des Bots](#4-ausführen-des-bots)
-5. [Bedienung des Bots](#5-bedienung-des-bots)
-   - [5.1 Mission Control Web-Dashboard (http://localhost:3080)](#51-mission-control-web-dashboard-httplocalhost3080)
-   - [5.2 3D-CAD-Studio & Voxel-Bearbeitung](#52-3d-cad-studio--voxel-bearbeitung)
-   - [5.3 Manueller Gamemode / First-Person Cockpit (WASD & Maus)](#53-manueller-gamemode--first-person-cockpit-wasd--maus)
-   - [5.4 Modell-Cockpit, Device Flow & Lokale LLMs](#54-modell-cockpit-device-flow--lokale-llms)
-   - [5.5 In-Game Chat-Befehle & Wolle-Markierungen](#55-in-game-chat-befehle--wolle-markierungen)
-   - [5.6 Survival-Autonomie (Kisten, Mobs, Bett, Gerüstbau)](#56-survival-autonomie-kisten-mobs-bett-gerüstbau)
-   - [5.7 1-Account Session Handoff](#57-1-account-session-handoff)
-6. [Minecraft Server Setup](#6-minecraft-server-setup)
-7. [Universal Schematic Hub (.schem, .litematic, .nbt)](#7-universal-schematic-hub-schem-litematic-nbt)
-8. [Testsuite & Qualitätssicherung (19 Suiten, 690+ Tests)](#8-testsuite--qualitätssicherung-19-suiten-690-tests)
+2. [Codebase-Struktur & Verzeichnisbaum](#2-codebase-struktur--verzeichnisbaum)
+3. [Installation & Voraussetzungen](#3-installation--voraussetzungen)
+4. [Konfiguration (.env Referenz)](#4-konfiguration-env-referenz)
+5. [Ausführen des Bots](#5-ausführen-des-bots)
+6. [Bedienung des Bots & Dashboards](#6-bedienung-des-bots--dashboards)
+   - [6.1 Mission Control Web-Dashboard (http://localhost:3080)](#61-mission-control-web-dashboard-httplocalhost3080)
+   - [6.2 First-Person Gamemode Cockpit (WASD & Maus)](#62-first-person-gamemode-cockpit-wasd--maus)
+   - [6.3 3D-CAD-Studio & Voxel-Bearbeitung](#63-3d-cad-studio--voxel-bearbeitung)
+   - [6.4 In-Game Chat-Befehle (Inklusive Schematics)](#64-in-game-chat-befehle-inklusive-schematics)
+   - [6.5 Universal Schematic Hub (.schem, .litematic, .nbt)](#65-universal-schematic-hub-schem-litematic-nbt)
+   - [6.6 Survival-Autonomie & Logistik](#66-survival-autonomie--logistik)
+   - [6.7 1-Account Session Handoff](#67-1-account-session-handoff)
+   - [6.8 Modell-Cockpit & Credential Vault](#68-modell-cockpit--credential-vault)
+7. [Minecraft Server Setup (1.20.4 bis 26.3)](#7-minecraft-server-setup-1204-bis-263)
+8. [Testsuite & Qualitätssicherung (22 Suiten, 775 Tests)](#8-testsuite--qualitätssicherung-22-suiten-775-tests)
 9. [Gemeinsam auf GitHub arbeiten (Für Freunde & Contributors)](#9-gemeinsam-auf-github-arbeiten-für-freunde--contributors)
 10. [Troubleshooting & FAQ](#10-troubleshooting--faq)
 11. [Lizenz](#11-lizenz)
@@ -76,12 +122,12 @@ Das Projekt ist in modular entkoppelte Schichten unterteilt:
  │  - worldScanner.js: Bounding-Box Erkennung (Wolle), Terrain-Relief-Scan    │
  │  - undoManager.js: Atomares Disk-Journal (data/undo_journal.json)           │
  └──────────────────────────────────────┬──────────────────────────────────────┘
-                                        │ Site-Context (JSON)
+                                        │ Site-Context & Terrain-Snapshot
                                         ▼
  ┌─────────────────────────────────────────────────────────────────────────────┐
  │ 2. COGNITIVE LAYER (src/ai/)                                                │
  │  - llmRouter.js: 4-stufige Multi-Provider Kaskade (Cerebras, Groq, Gemini)  │
- │  - architectAgent.js: Isolierte node:vm Sandbox für Code-Synthese           │
+ │  - architectAgent.js: Isolierte node:vm Sandbox für Bauskript-Synthese      │
  │  - safeProbeWorker.js & localModelScanner.js: Endpunkt- & Modellprüfung     │
  └──────────────────────────────────────┬──────────────────────────────────────┘
                                         │ Prozedurales JavaScript Bauskript
@@ -89,32 +135,94 @@ Das Projekt ist in modular entkoppelte Schichten unterteilt:
  ┌─────────────────────────────────────────────────────────────────────────────┐
  │ 3. GEOMETRY & LINTER LAYER (src/builder/)                                   │
  │  - voxelCanvas.js: 3D-Array mit State-Transform (Rotation/Spiegelung)       │
- │  - structuralLinter.js: 3D BFS-Floodfill (Schwerkraft- & Ästhetik-Audit)    │
+ │  - structuralLinter.js: 3D BFS-Floodfill (Statik, Semantik & Ästhetik-Audit)│
  │  - greedyMesher.js: /fill Quader-Kompression (-81% Paketaufwand)            │
  └──────────────────────────────────────┬──────────────────────────────────────┘
-                                        │ Optimierte Block-Operationen
+                                        │ Bereinigte, sortierte Block-Operationen
                                         ▼
  ┌─────────────────────────────────────────────────────────────────────────────┐
  │ 4. EXECUTION & SURVIVAL LAYER (src/bot/ & src/survival/)                    │
  │  - botClient.js: Mineflayer Lifecycle & Reconnect-Management                │
+ │  - worldExecutor.js: Baufeld-Rodung, Blockstate-Parsing, Scaffolding        │
  │  - threatManager.js: Autonome Monster-Abwehr, Schild-Block & Taktik         │
  │  - chestManager.js & materialProcurement.js: Kistenscan & Entnahme          │
+ │  - harvestManager.js: Werkzeugauswahl & Baufeld-Rodung                      │
  │  - scaffoldManager.js: Höhenbau & Gerüst-Setzen / -Rückbau                  │
  │  - sleepController.js: Nacht-Management & Ausweich-Disconnect               │
  └──────────────────────────────────────┬──────────────────────────────────────┘
                                         │ Telemetrie & Steuerbefehle (WebSocket)
                                         ▼
  ┌─────────────────────────────────────────────────────────────────────────────┐
- │ 5. MISSION CONTROL COCKPIT (src/web/)                                       │
+ │ 5. MISSION CONTROL & GAMEMODE COCKPIT (src/web/)                            │
  │  - dashboardServer.js: Express + WebSocket Server (Port 3080)               │
- │  - Three.js 3D Viewport, 2D Topo-Reliefkarte, Gamemode Cockpit              │
+ │  - Three.js 3D Viewport, 2D Topo-Reliefkarte, First-Person Gamemode         │
  │  - AES-256-GCM Credential Vault für gesicherte API-Tokens                   │
  └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Installation & Voraussetzungen
+## 2. Codebase-Struktur & Verzeichnisbaum
+
+```text
+MinecraftAiArchitectBot/
+├── index.js                      # Haupt-Einstiegspunkt (startet Bot & Dashboard)
+├── package.json                  # Abhängigkeiten, Metadaten und 22 Testskripte
+├── .env.example                  # Vollständig dokumentierte Konfigurationsvorlage
+├── .gitignore                    # Schützt Secrets (.env, .vault, logs) vor Git
+├── CONTRIBUTING.md               # Richtlinien für Mitwirkende & Freunde
+├── data/
+│   ├── schematics/               # Ordner für .schem, .litematic & .nbt Dateien
+│   └── style_memory.json         # Gelernte Baustile und Designmuster
+├── src/
+│   ├── ai/                       # Kognitive Schicht: LLM-Router, Sandbox & Prompts
+│   │   ├── architectAgent.js     # VM-Sandbox für Code-Generierung
+│   │   ├── llmRouter.js          # Multi-Provider Failover Kaskade
+│   │   ├── safeProbeWorker.js    # Timeout-sichere Endpunkt-Prüfung
+│   │   └── localModelScanner.js  # Auto-Erkennung von Ollama / LM Studio
+│   ├── bot/                      # Bot-Steuerung & Mineflayer Lifecycle
+│   │   ├── botClient.js          # Verbindung, Events & Server-Rechte
+│   │   ├── chatController.js     # Chatbefehle (!schem, !come, !build etc.)
+│   │   ├── manualController.js   # Gamemode WASD-, Look- & Inventar-Engine
+│   │   └── threatManager.js      # Monster-Erkennung, Schild & Nahkampf
+│   ├── builder/                  # Geometrie & Bau-Engine
+│   │   ├── voxelCanvas.js        # 3D-Voxel-Matrix mit Transformationen
+│   │   ├── structuralLinter.js   # Schwerkraft-, Durchgangs- & Semantik-Linter
+│   │   ├── greedyMesher.js       # Quader-Optimierung für /fill Befehle
+│   │   └── worldExecutor.js      # Blockplatzierung & Survival-Ausführung
+│   ├── config/                   # Konfiguration & Versionierung
+│   │   ├── envManager.js         # Sicheres Lesen & atomares Schreiben von .env
+│   │   ├── settings.js           # Zentrale Konfigurationsparameter
+│   │   └── versionResolver.js    # Minecraft 1.20.4 bis 26.3 Protokoll-Adapter
+│   ├── security/                 # Sicherheit & Secrets
+│   │   └── credentialVault.js    # AES-256-GCM verschlüsselter Token-Tresor
+│   ├── survival/                 # Survival-Fähigkeiten
+│   │   ├── chestManager.js       # Behälter-Scan & Inventar-Abgleich
+│   │   ├── harvestManager.js     # Intelligente Werkzeugwahl & Rodung
+│   │   ├── materialProcurement.js# Autonome Materialbeschaffung
+│   │   ├── scaffoldManager.js    # Gerüstbau & sauberer Rückbau
+│   │   └── sleepController.js    # Betten-Suche & Ausweich-Handoff
+│   ├── utils/                    # Allgemeine Hilfsfunktionen
+│   │   ├── fileUtils.js          # Atomare Dateioperationen
+│   │   └── logger.js             # Strukturierter Konsolen- & Datei-Logger
+│   ├── web/                      # Mission Control Web-Dashboard & Gamemode
+│   │   ├── dashboardServer.js    # Express HTTP & WebSocket Server
+│   │   ├── public/               # Frontend Assets, CSS, HTML, Three.js
+│   │   │   ├── index.html        # Haupt-Dashboard (Mission Control)
+│   │   │   ├── gamemode.html     # First-Person Gamemode Cockpit
+│   │   │   ├── app.js            # Frontend-Orchestrierung
+│   │   │   └── js/               # Submodule (manualCockpit, threeViewport etc.)
+│   │   ├── routes/               # REST-Endpunkte (Endpoints, Schematics, Setup)
+│   │   └── ws/                   # WebSocket-Dispatcher & Telemetrie
+│   └── world/                    # Wahrnehmung & Undo
+│       ├── worldScanner.js       # Terrain- & Wollmarkierungs-Scanner
+│       └── undoManager.js        # 100% verlässliches Block-Rückgängigmachen
+└── test/                         # 22 deterministische Offline-Testsuiten (775 Tests)
+```
+
+---
+
+## 3. Installation & Voraussetzungen
 
 ### Systemanforderungen:
 * **Node.js**: Version **>= 20.0.0** (empfohlen: Node 20 LTS oder 22 LTS).
@@ -136,7 +244,7 @@ Das Paket `canvas` erfordert je nach Betriebssystem native Bibliotheken für das
 
 ---
 
-## 3. Konfiguration (.env Referenz)
+## 4. Konfiguration (.env Referenz)
 
 Kopiere `.env.example` nach `.env`. Die wichtigsten Schalter:
 
@@ -160,7 +268,7 @@ Kopiere `.env.example` nach `.env`. Die wichtigsten Schalter:
 
 ---
 
-## 4. Ausführen des Bots
+## 5. Ausführen des Bots
 
 ```bash
 # Bot und Web-Dashboard starten
@@ -171,49 +279,47 @@ Beim Start geschieht Folgendes:
 1. Der Bot initialisiert das **Mission Control Dashboard** auf `http://localhost:3080`.
 2. Er verbindet sich parallel zum konfigurierten Minecraft-Server.
 3. Der In-Game Chat meldet: `[BaumeisterKI] Bereit für Bauaufträge! Nutze !help für Befehle.`
-4. Im Browser unter `http://localhost:3080` siehst du Live-Telemetrie, Koordinaten, 2D-Reliefkarte und 3D-Viewport.
+4. Im Browser unter `http://localhost:3080` siehst du Live-Telemetrie, Koordinaten, 2D-Reliefkarte und 3D-CAD-Studio.
 
 ---
 
-## 5. Bedienung des Bots
+## 6. Bedienung des Bots & Dashboards
 
-### 5.1 Mission Control Web-Dashboard (`http://localhost:3080`)
+### 6.1 Mission Control Web-Dashboard (`http://localhost:3080`)
 Das Web-Dashboard ist das zentrale Steuerungszentrum:
 * **Status-Bar:** Zeigt Verbindungsstatus (`ONLINE_ACTIVE`, `PAUSED_OWNER_INGAME`), Bot-Lebenspunkte, Hunger, Server-Rechte und Handoff-Modus.
 * **2D-Topologische Reliefkarte:**
   * Zeigt ein 64x64 Block-Areal um den Bot mit echten Höhenlinien.
   * **Klick:** Setzt den Baubereich fest.
   * **Shift + Klick:** Lässt den Bot per A*-Pathfinder direkt zu diesen Koordinaten laufen!
+* **Quick-Actions:** Bau abbrechen, Rückgängig machen (`Undo`), Blickwinkel ausrichten, Tageszeit abfragen.
 
-### 5.2 3D-CAD-Studio & Voxel-Bearbeitung
+### 6.2 First-Person Gamemode Cockpit (WASD & Maus)
+Du kannst den Bot jederzeit direkt im Browser selbst steuern — wie in einem echten Minecraft-Client:
+1. Klicke im Dashboard auf den Button **"🎮 Gamemode aktivieren"** (oder öffne `http://localhost:3080/gamemode.html` auf einem zweiten Bildschirm).
+2. **Klick ins Spielfeld** aktiviert Pointer-Lock (Mauszeiger wird gefangen).
+3. **Steuerung:**
+   * `W, A, S, D` = Laufen / Bewegen
+   * `Leertaste` = Springen
+   * `Shift` = Schleichen / Sneaken
+   * `Mausbewegung` = Freies Umschauen (mit Anti-Gimbal-Flip & absolutem Pitch-Clamp -89.9° bis +89.9°)
+   * `1 bis 9` = Quickbar-Slots wählen
+   * `Linksklick` = Schlagen / Block abbauen
+   * `Rechtsklick` = Block platzieren / Item benutzen / Nahrung essen
+   * `E` = 36-Slot Inventar & Crafting-Screen öffnen / schließen
+   * `T` oder `Enter` = Chat-Leiste öffnen für Server-Nachrichten & Slash-Befehle (`/time set day` etc.)
+   * `Q` = Gehaltenes Item droppen (`Strg+Q` = ganzen Stack droppen)
+   * `F` = Gegenstand in die Zweithand (Off-Hand) tauschen
+   * `ESC` = Gamemode verlassen (strikte LIFO-Priorität: schließt zuerst offene Overlays wie Inventar oder Chat).
+
+### 6.3 3D-CAD-Studio & Voxel-Bearbeitung
 * **Voxel Brush & Eraser:** Platziere oder lösche Voxel direkt mit der Maus in der 3D-Vorschau.
 * **Pipette (Eyedropper):** Klicke auf Blöcke, um Material und Ausrichtung zu übernehmen.
 * **Y-Slice Regler:** Schicht-für-Schicht-Inspektion von Fundament bis Dach.
 * **Palette Swapper:** Tausche mit 1 Klick Holzarten (z. B. Eiche zu Schwarzeiche) — alle Treppen-, Stufen- und Tür-Ausrichtungen (`facing`, `half`, `shape`) bleiben exakt erhalten!
 * **Stückliste:** Exakte Bedarfsanzeige aller Blöcke für den Survival-Modus.
 
-### 5.3 Manueller Gamemode / First-Person Cockpit (WASD & Maus)
-Du kannst den Bot jederzeit direkt im Browser selbst steuern:
-1. Klicke im Dashboard auf den Button **"🎮 Gamemode aktivieren"** (oder öffne `http://localhost:3080/gamemode.html` auf einem zweiten Monitor).
-2. **Klick ins Spielfeld** aktiviert Pointer-Lock (Mauszeiger wird gefangen).
-3. **Steuerung:**
-   * `W, A, S, D` = Laufen / Bewegen
-   * `Leertaste` = Springen
-   * `Shift` = Schleichen / Sneaken
-   * `Mausbewegung` = Freies Umschauen (inklusive Anti-Gimbal-Flip Schutz)
-   * `1 bis 9` = Quickbar-Slots wählen
-   * `Linksklick` = Schlagen / Block abbauen
-   * `Rechtsklick` = Block platzieren / Item benutzen
-   * `Q` = Item droppen (`Strg+Q` = ganzen Stack droppen)
-   * `ESC` = Gamemode verlassen (strikte LIFO-Priorität schließt zuerst Overlays).
-
-### 5.4 Modell-Cockpit, Device Flow & Lokale LLMs
-Über das Zahnrad-Symbol oder die Modell-Pille oben rechts öffnet sich das Modell-Cockpit:
-* **GitHub Models 1-Click Login:** Authentifiziere dich via RFC 8628 Device Flow (Code wird angezeigt, 1 Klick auf github.com/login/device genügt — **keine manuellen API-Keys nötig**).
-* **Lokaler Modell-Scanner:** Findet automatisch laufende Ollama-, LM Studio- oder LocalAI-Instanzen auf deinem Rechner.
-* **AES-256-GCM Credential Vault:** Speichert Tokens verschlüsselt auf deiner Festplatte (`data/credentials.vault`).
-
-### 5.5 In-Game Chat-Befehle & Wolle-Markierungen
+### 6.4 In-Game Chat-Befehle (Inklusive Schematics)
 Als autorisierter `BOT_OWNER` kannst du dem Bot direkt im Minecraft-Chat Anweisungen geben:
 
 | Chat-Befehl | Wirkung |
@@ -221,6 +327,10 @@ Als autorisierter `BOT_OWNER` kannst du dem Bot direkt im Minecraft-Chat Anweisu
 | `!come` | Bot läuft direkt zu deiner aktuellen Spielerposition. |
 | `!stop` | Bricht den laufenden Bauauftrag sofort ab (< 100 ms Reaktionszeit). |
 | `!undo` | Liest das Undo-Journal und stellt die Original-Blöcke zu 100% wieder her. |
+| `!schem list` | Listet alle im Ordner `data/schematics/` hinterlegten Baupläne auf. |
+| `!schem load <datei>` | Lädt eine Schematic (`.schem`, `.litematic`, `.nbt`) und passt das Baufeld automatisch an. |
+| `!schem build` | Startet den Bauplan sofort (inklusive automatischer Baufeld-Rodung). |
+| `!schem clear` | Entlädt den aktuellen Bauplan aus dem Speicher. |
 | `!preview` | Zeigt Maße und Stückliste im Chat; gibt ASCII-Schnitt im Terminal aus. |
 | `!instant` | Schaltet zwischen interaktivem Konzept-Pitch und Sofort-Bau um. |
 | `!style` | Zeigt gelernte Baustile aus `data/style_memory.json`. |
@@ -231,14 +341,22 @@ Als autorisierter `BOT_OWNER` kannst du dem Bot direkt im Minecraft-Chat Anweisu
 > **Wolle-Markierungen für exakte Bauflächen:**
 > Setze zwei beliebige Wollblöcke (z. B. weiße Wolle) diagonal in die Welt und tippe `!scan`. Der Bot nutzt diesen exakten Quader als Baugrundstück!
 
-### 5.6 Survival-Autonomie (Kisten, Mobs, Bett, Gerüstbau)
+### 6.5 Universal Schematic Hub (.schem, .litematic, .nbt)
+Der Bot verarbeitet alle gängigen Minecraft-Bauplan-Formate:
+* **Sponge Schematic (`.schem`):** Standard-Austauschformat für WorldEdit.
+* **Litematica (`.litematic`):** Nativer 64-Bit Bit-Array Unpacker/Packer.
+* **Vanilla Structure Block (`.nbt`):** Standard Structure-Blocks des Minecraft-Clients.
+* **Automatische Baufeld-Anpassung:** Beim Laden (`!schem load` oder Web-Upload) zentriert der Bot das Baufeld automatisch passgenau vor dem Spieler in dessen Blickrichtung.
+* **Phase 0 Baufeld-Rodung:** Vor dem Bau entfernt der Bot störendes Gras, Blumen, Laub und Schutt von oben nach unten.
+
+### 6.6 Survival-Autonomie & Logistik
 Im Modus `pure_physical` (oder `auto` ohne OP-Rechte):
 * **Kisten-Logistik:** Der Bot scannt alle Behälter (Kisten, Doppelkisten, Fässer, Shulker) im 32m-Radius und entnimmt selbstständig benötigte Materialien.
 * **Monster-Abwehr (Threat Manager):** Feinde im 12m-Radius werden erkannt. Der Bot pausiert den Bau, zückt Waffe und Schild, hält Creeper auf Abstand, weicht bei < 4 Herzen zurück und isst Nahrung.
 * **Nacht & Bett (Sleep Controller):** Bei Nachteinbruch sucht der Bot ein freies Bett im Umkreis. Findet er keines, loggt er sich kurz aus, damit die Mitspieler durchschlafen können, und joint bei Tag automatisch wieder.
 * **Gerüstbau (Scaffolding):** Bei hohen Bauwerken platziert der Bot automatisch Hilfsblöcke/Gerüste, baut in Reichweite und baut die Gerüste beim Abstieg wieder restlos ab!
 
-### 5.7 1-Account Session Handoff
+### 6.7 1-Account Session Handoff
 Du hast nur einen einzigen Minecraft-Account? Kein Problem!
 Wenn du mit demselben Account den Server betrittst:
 1. Kickt der Server den Bot wegen Doppel-Login (`duplicate_login`).
@@ -246,11 +364,17 @@ Wenn du mit demselben Account den Server betrittst:
 3. Ein passiver Ping prüft regelmäßig, ob du noch auf dem Server spielst.
 4. Sobald du den Server verlässt, verbindet sich der Bot nach 4 Sekunden automatisch wieder und setzt den Bauauftrag an exakt demselben Block fort!
 
+### 6.8 Modell-Cockpit & Credential Vault
+Über das Zahnrad-Symbol oder die Modell-Pille oben rechts öffnet sich das Modell-Cockpit:
+* **GitHub Models 1-Click Login:** Authentifiziere dich via RFC 8628 Device Flow (Code wird angezeigt, 1 Klick auf github.com/login/device genügt — **keine manuellen API-Keys nötig**).
+* **Lokaler Modell-Scanner:** Findet automatisch laufende Ollama-, LM Studio- oder LocalAI-Instanzen auf deinem Rechner.
+* **AES-256-GCM Credential Vault:** Speichert Tokens verschlüsselt auf deiner Festplatte (`data/credentials.vault`).
+
 ---
 
-## 6. Minecraft Server Setup
+## 7. Minecraft Server Setup (1.20.4 bis 26.3)
 
-Der Bot funktioniert auf jedem Java-Server ab Version 1.20.4 bis 26.3.
+Der Bot funktioniert auf jedem Java-Server ab Version 1.20.4 bis 26.3 (Protokoll 777).
 
 ### Empfohlene `server.properties`:
 ```properties
@@ -273,39 +397,34 @@ simulation-distance=10
 
 ---
 
-## 7. Universal Schematic Hub (.schem, .litematic, .nbt)
-
-Der Bot verarbeitet alle gängigen Minecraft-Bauplan-Formate:
-* **Sponge Schematic (`.schem`):** Standard-Austauschformat für WorldEdit.
-* **Litematica (`.litematic`):** Nativer 64-Bit Bit-Array Unpacker/Packer.
-* **Vanilla Structure Block (`.nbt`):** Standard Structure-Blocks des Minecraft-Clients.
-* **Web Drag & Drop:** Ziehe beliebige Baupläne direkt in das Web-Dashboard; sie werden sofort in den 3D-Viewport geladen.
-
----
-
-## 8. Testsuite & Qualitätssicherung (19 Suiten, 690+ Tests)
+## 8. Testsuite & Qualitätssicherung (22 Suiten, 775 Tests)
 
 Alle Tests laufen **100% offline**, ohne laufenden Minecraft-Server und ohne bezahlte Cloud-API-Keys:
 
 ```bash
-# Gesamte Testsuite ausführen (19 Suiten, 100% PASS):
+# Gesamte Testsuite ausführen (22 Suiten, 775 Tests, 100% PASS):
 npm test
 
 # Gezielte Testsuiten ausführen:
-npm run test:dry                 # 89 Geometrie-, Linter- & Router-Tests
+npm run test:dry                 # 23 Geometrie-, Linter- & Router-Tests
 npm run test:mission             # 80 Mission Control & Web-CAD Tests
+npm run test:improvements        # 32 Statik- & Ästhetik-Optimierungstests
 npm run test:milestone1          # 34 Kisten-Logistik & Version 26.3 Tests
-npm run test:milestone2          # 44 Threat-FSM & Schlaf-Management Tests
+npm run test:milestone2          # 18 Threat-FSM & Schlaf-Management Tests
 npm run test:vault               # 30 AES-256-GCM Credential Vault Tests
 npm run test:model               # 22 Hot-Reload & Safe Probe Worker Tests
-npm run test:device              # 26 Device-Flow & BFF Tests
-npm run test:settings            # 20 Onboarding & Settings Tests
-npm run test:cockpit             # 25 Cockpit-Backend Tests
-npm run test:builder             # 14 Builder-Modularisierungs-Tests
-npm run test:scaffold            # 15 Gerüstbau & Scaffolding Tests
-npm run test:translator          # 20 Viewer-State Translator Tests
-npm run test:gamemode            # 233 Gamemode E2E, WS, Backend & Frontend Tests
-npm run test:popout              # 76 Multi-Monitor Popout Tests
+npm run test:device              # 27 Device-Flow & BFF Tests
+npm run test:settings            # 46 Onboarding & Settings Tests
+npm run test:cockpit             # 38 Cockpit-Backend Tests
+npm run test:msa                 # 24 MSA-Auth Integration Tests
+npm run test:builder             # 26 Builder-Modularisierungs-Tests
+npm run test:scaffold            # 21 Gerüstbau & Scaffolding Tests
+npm run test:translator          # 28 Viewer-State Translator Tests
+npm run test:gamemode            # 256 Gamemode E2E, WS, Backend, Frontend & Perfection
+npm run test:popout              # 19 Multi-Monitor Popout Tests
+npm run test:version             # 20 Live-Versionskompatibilität (1.20 - 26.3)
+npm run test:schem               # 11 Litematica & Schematic SOTA Tests
+npm run test:gamemode-perfection # 20 Gamemode HUD, Inventory & Pitch-Clamp Tests
 ```
 
 ---
@@ -323,7 +442,7 @@ git checkout -b feature/mein-neues-feature
 
 ### 2. Entwicklung & Richtlinien
 * **ECMAScript Modules (ESM):** Wir verwenden reines Node.js ESM (`import` / `export`), kein `require()`.
-* **Zero-Regressions:** Führe vor jedem Commit `npm test` aus. Alle 19 Suiten müssen grün bleiben.
+* **Zero-Regressions:** Führe vor jedem Commit `npm test` aus. Alle 22 Suiten müssen grün bleiben.
 * **Git-Hygiene:** Private Keys, Passwörter und Session-Logs gehören niemals in Git. Unsere `.gitignore` schützt `.env`, `*.vault`, `logs/` und temporäre Dateien automatisch.
 
 ### 3. Änderungen committen & Pull Request stellen
@@ -352,5 +471,5 @@ git push origin feature/mein-neues-feature
 
 ## 11. Lizenz
 
-Dieses Projekt steht unter der **[MIT Lizenz](LICENSE)**.
+Dieses Projekt steht unter der **[MIT Lizenz](LICENSE)**.  
 Frei verwendbar, modifizierbar und erweiterbar.

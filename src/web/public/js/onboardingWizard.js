@@ -86,8 +86,8 @@ export async function loadSettings() {
       if (data.serverRights) {
         updateRightsUI(data.serverRights);
       }
-      updateEnvBadge(data.hasEnvFile);
-      if (data.hasEnvFile === false) {
+      updateEnvBadge(data.hasEnvFile, data.isFullyConfigured);
+      if (data.hasEnvFile === false || data.isFullyConfigured === false) {
         openOnboardingModal();
       }
       return data;
@@ -377,15 +377,18 @@ export function updateRightsUI(rights) {
   }
 }
 
-export function updateEnvBadge(hasEnvFile) {
+export function updateEnvBadge(hasEnvFile, isFullyConfigured = true) {
   const envBadge = document.getElementById('settingsEnvBadge');
   if (envBadge) {
-    if (hasEnvFile) {
-      envBadge.textContent = '📄 .env Datei aktiv';
+    if (hasEnvFile && isFullyConfigured) {
+      envBadge.textContent = '📄 Konfiguration aktiv';
       envBadge.style.color = '#10b981';
-    } else {
-      envBadge.textContent = '⚠️ Keine .env (Standardwerte aktiv)';
+    } else if (hasEnvFile && !isFullyConfigured) {
+      envBadge.textContent = '⚙️ Onboarding ausstehend';
       envBadge.style.color = '#f59e0b';
+    } else {
+      envBadge.textContent = '⚠️ Keine .env (Nicht eingerichtet)';
+      envBadge.style.color = '#ef4444';
     }
   }
 }

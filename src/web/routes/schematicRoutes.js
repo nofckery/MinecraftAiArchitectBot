@@ -66,13 +66,31 @@ export function registerSchematicRoutes(app, upload, context) {
       fs.writeFileSync(savePath, req.file.buffer);
 
       const bounds = canvas.getBounds();
-      const siteInfo = context.architectAgent ? context.architectAgent.getEffectiveSiteInfo() : {
-        origin: { x: 0, y: 64, z: 0 },
-        width: bounds.width,
-        depth: bounds.depth,
-        height: bounds.height,
-        facing: 'north'
-      };
+      let siteInfo;
+      if (context.architectAgent) {
+        const probed = context.architectAgent.getEffectiveSiteInfo(null, {
+          width: bounds.width,
+          depth: bounds.depth,
+          height: bounds.height
+        });
+        context.architectAgent.setCustomBounds({
+          minX: probed.origin.x,
+          minZ: probed.origin.z,
+          maxX: probed.origin.x + bounds.width - 1,
+          maxZ: probed.origin.z + bounds.depth - 1,
+          baseY: probed.origin.y,
+          facing: probed.facing || 'north'
+        });
+        siteInfo = context.architectAgent.getEffectiveSiteInfo();
+      } else {
+        siteInfo = {
+          origin: { x: 0, y: 64, z: 0 },
+          width: bounds.width,
+          depth: bounds.depth,
+          height: bounds.height,
+          facing: 'north'
+        };
+      }
 
       if (context.architectAgent) {
         context.architectAgent.lastBuildState = {
@@ -149,13 +167,31 @@ export function registerSchematicRoutes(app, upload, context) {
       fs.writeFileSync(savePath, buffer);
 
       const bounds = canvas.getBounds();
-      const siteInfo = context.architectAgent ? context.architectAgent.getEffectiveSiteInfo() : {
-        origin: { x: 0, y: 64, z: 0 },
-        width: bounds.width,
-        depth: bounds.depth,
-        height: bounds.height,
-        facing: 'north'
-      };
+      let siteInfo;
+      if (context.architectAgent) {
+        const probed = context.architectAgent.getEffectiveSiteInfo(null, {
+          width: bounds.width,
+          depth: bounds.depth,
+          height: bounds.height
+        });
+        context.architectAgent.setCustomBounds({
+          minX: probed.origin.x,
+          minZ: probed.origin.z,
+          maxX: probed.origin.x + bounds.width - 1,
+          maxZ: probed.origin.z + bounds.depth - 1,
+          baseY: probed.origin.y,
+          facing: probed.facing || 'north'
+        });
+        siteInfo = context.architectAgent.getEffectiveSiteInfo();
+      } else {
+        siteInfo = {
+          origin: { x: 0, y: 64, z: 0 },
+          width: bounds.width,
+          depth: bounds.depth,
+          height: bounds.height,
+          facing: 'north'
+        };
+      }
 
       if (context.architectAgent) {
         context.architectAgent.lastBuildState = {

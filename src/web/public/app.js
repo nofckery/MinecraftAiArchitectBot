@@ -55,6 +55,7 @@ import {
   initManualCockpit,
   handleTelemetryUpdate,
   handleGamemodeState,
+  handleIncomingChat,
   isGamemode,
   exitGamemode,
   isPopoutActive
@@ -128,6 +129,7 @@ export function handleServerMessage(msg) {
       break;
     case 'chat_log':
       appendChatMessage(msg);
+      handleIncomingChat(msg);
       break;
     case 'bot_telemetry':
       updateTelemetry(msg);
@@ -266,7 +268,7 @@ export function updateStatus(msg) {
     }
   }
   if (msg.serverRights) updateRightsUI(msg.serverRights);
-  if (msg.hasEnvFile === false) openOnboardingModal();
+  if (msg.hasEnvFile === false || msg.isFullyConfigured === false) openOnboardingModal();
 
   const viewerPort = msg.viewerPort || 3081;
   const lblPort = document.getElementById('lblViewerPort');

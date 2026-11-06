@@ -9,6 +9,7 @@ import { serverRights } from '../bot/serverRights.js';
 import { getPathfinderGoals } from '../utils/pathfinderHelper.js';
 import { normalizeBlockName } from './blockAliases.js';
 import { scaffoldManager } from '../survival/scaffoldManager.js';
+import { harvestManager } from '../survival/harvestManager.js';
 import { manualController } from '../bot/manualController.js';
 
 export const FRAGILE_BLOCK_PATTERNS = [
@@ -38,6 +39,63 @@ export const FRAGILE_BLOCK_PATTERNS = [
 export function isFragileBlock(blockName) {
   if (!blockName || blockName === 'air') return false;
   return FRAGILE_BLOCK_PATTERNS.some(pat => blockName.includes(pat) || blockName.endsWith(pat));
+}
+
+export function parseBlockProperties(blockStr) {
+  if (!blockStr || typeof blockStr !== 'string') return {};
+  const match = blockStr.match(/\[(.*)\]$/);
+  if (!match) return {};
+  const props = {};
+  for (const pair of match[1].split(',')) {
+    const [k, v] = pair.split('=');
+    if (k && v !== undefined) props[k.trim()] = v.trim();
+  }
+  return props;
+}
+
+export function sortNeighborsForBlock(neighbors, blockName, props = {}) {
+  const sorted = [...neighbors];
+  const name = (blockName || '').toLowerCase();
+
+  // 1. Wandfackeln & Wandlaternen
+  if (name.includes('wall_torch') || name.includes('wall_hanging')) {
+    const facing = props.facing || 'south';
+    const preferredFaceMap = {
+      south: { offset: new Vec3(0, 0, -1), face: new Vec3(0, 0, 1) },
+      north: { offset: new Vec3(0, 0, 1), face: new Vec3(0, 0, -1) },
+      east:  { offset: new Vec3(-1, 0, 0), face: new Vec3(1, 0, 0) },
+      west:  { offset: new Vec3(1, 0, 0), face: new Vec3(-1, 0, 0) }
+    };
+    const pref = preferredFaceMap[facing];
+    if (pref) {
+      sorted.sort((a, b) => (a.face.equals(pref.face) ? -1 : (b.face.equals(pref.face) ? 1 : 0)));
+      return sorted;
+    }
+  }
+
+  // 2. Achsen-Ausrichtung (Logs, Basalt, Säulen)
+  if (props.axis) {
+    if (props.axis === 'y') {
+      sorted.sort((a, b) => (Math.abs(a.face.y) > 0 ? -1 : (Math.abs(b.face.y) > 0 ? 1 : 0)));
+    } else if (props.axis === 'x') {
+      sorted.sort((a, b) => (Math.abs(a.face.x) > 0 ? -1 : (Math.abs(b.face.x) > 0 ? 1 : 0)));
+    } else if (props.axis === 'z') {
+      sorted.sort((a, b) => (Math.abs(a.face.z) > 0 ? -1 : (Math.abs(b.face.z) > 0 ? 1 : 0)));
+    }
+    return sorted;
+  }
+
+  // 3. Obere vs. untere Stufen & Treppen
+  if (props.half === 'top' || props.type === 'top') {
+    sorted.sort((a, b) => (a.face.y < 0 ? -1 : (b.face.y < 0 ? 1 : 0)));
+    return sorted;
+  }
+  if (props.half === 'bottom' || props.type === 'bottom') {
+    sorted.sort((a, b) => (a.face.y > 0 ? -1 : (b.face.y > 0 ? 1 : 0)));
+    return sorted;
+  }
+
+  return sorted;
 }
 
 export class WorldExecutor {
@@ -252,6 +310,7 @@ export class WorldExecutor {
   async placeBlockPhysically(bot, x, y, z, blockStateString, mode = 'pure_physical') {
     const targetPos = new Vec3(x, y, z);
     const blockName = normalizeBlockName(blockStateString);
+    const props = parseBlockProperties(blockStateString);
 
     // 3.0 Im pure_physical Modus: Staging & Erreichbarkeit sicherstellen (Navigation oder Gerüstbau)
     if (mode === 'pure_physical' && bot) {
@@ -281,11 +340,30 @@ export class WorldExecutor {
       }
     }
 
-    // Item im Creative-Inventar bereitstellen (falls Creative aktiv)
+    // Item im Creative-Inventar oder Survival-Inventar bereitstellen
     await inventoryManager.equipBlock(bot, blockName);
 
-    // Suche soliden Referenzblock unter den 6 Nachbarn
-    const neighbors = [
+    // SOTA Blickwinkel-Ausrichtung vor Platzierung:
+    // Treppen, Öfen, Truhen, Türen usw. richten sich in Minecraft nach dem Yaw des Spielers beim Platzieren
+    if (props.facing) {
+      const YAW_MAP = {
+        south: 0,
+        west: Math.PI / 2,
+        north: Math.PI,
+        east: -Math.PI / 2
+      };
+      const desiredYaw = YAW_MAP[props.facing];
+      if (desiredYaw !== undefined && typeof bot.look === 'function') {
+        try {
+          await bot.look(desiredYaw, bot.entity?.pitch || 0, true);
+        } catch (lookErr) {
+          logger.debug(`[WorldExecutor] Look-Ausrichtung für facing=${props.facing} fehlgeschlagen: ${lookErr.message}`);
+        }
+      }
+    }
+
+    // Suche soliden Referenzblock unter den Nachbarn (sortiert nach Block-Eigenschaften)
+    const baseNeighbors = [
       { offset: new Vec3(0, -1, 0), face: new Vec3(0, 1, 0) },
       { offset: new Vec3(0, 1, 0),  face: new Vec3(0, -1, 0) },
       { offset: new Vec3(0, 0, -1), face: new Vec3(0, 0, 1) },
@@ -293,6 +371,16 @@ export class WorldExecutor {
       { offset: new Vec3(-1, 0, 0), face: new Vec3(1, 0, 0) },
       { offset: new Vec3(1, 0, 0),  face: new Vec3(-1, 0, 0) }
     ];
+    const neighbors = sortNeighborsForBlock(baseNeighbors, blockName, props);
+
+    const placeOptions = { swingArm: 'right' };
+    if (props.half === 'top' || props.type === 'top') {
+      placeOptions.half = 'top';
+      placeOptions.forceLook = 'ignore';
+    } else if (props.half === 'bottom' || props.type === 'bottom') {
+      placeOptions.half = 'bottom';
+      placeOptions.forceLook = 'ignore';
+    }
 
     let placed = false;
     for (const n of neighbors) {
@@ -300,7 +388,11 @@ export class WorldExecutor {
       const refBlock = bot.blockAt ? bot.blockAt(refPos) : null;
       if (refBlock && !refBlock.name.includes('air')) {
         try {
-          await bot.placeBlock(refBlock, n.face);
+          if (typeof bot._placeBlockWithOptions === 'function') {
+            await bot._placeBlockWithOptions(refBlock, n.face, placeOptions);
+          } else {
+            await bot.placeBlock(refBlock, n.face);
+          }
           placed = true;
           break;
         } catch (placeErr) {
@@ -364,6 +456,32 @@ export class WorldExecutor {
           return false;
         }
       }
+    }
+    return true;
+  }
+
+  async _clearSiteObstacles(bot, blocks, mode, options = {}) {
+    const shouldClear = options.clearSite !== undefined
+      ? Boolean(options.clearSite)
+      : (Boolean(settings.SURVIVAL_AUTO_CLEAR_SITE) || mode === 'pure_physical');
+
+    if (!shouldClear || !bot || options.isUndo || options.resumeState) {
+      return true;
+    }
+
+    this.buildProgress.phase = 'Phase 0: Bauplatz-Rodung';
+    logger.info('[WorldExecutor] Starte Phase 0: Bauplatz-Vorbereitung (Hindernis-Rodung)...');
+
+    try {
+      if (typeof harvestManager?.clearObstacles === 'function') {
+        const result = await harvestManager.clearObstacles(bot, blocks, {
+          chatAlerts: true,
+          maxBlocks: options.maxClearBlocks || 300
+        });
+        logger.info(`[WorldExecutor] Phase 0 abgeschlossen: ${result.clearedCount} Hindernisse beseitigt.`);
+      }
+    } catch (clearErr) {
+      logger.warn(`[WorldExecutor] Warnung bei Bauplatz-Rodung: ${clearErr.message}`);
     }
     return true;
   }
@@ -549,6 +667,9 @@ export class WorldExecutor {
       this.isBuilding = false;
       return false;
     }
+
+    // Phase 0: Bauplatz-Vorbereitung (Rodung von Hindernissen)
+    await this._clearSiteObstacles(bot, blocks, mode, options);
 
     // Bauplan-Koordinaten für kollisionsfreien Gerüstbau sichern
     const reservedCoords = new Set();

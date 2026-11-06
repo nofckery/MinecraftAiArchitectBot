@@ -187,7 +187,7 @@ export class ManualController extends EventEmitter {
   // --- Orientation & Mouse Look ---
 
   look(yaw, pitch, options = {}) {
-    if (!this.isActive()) return false;
+    if (!this.isActive() || !this.bot) return false;
 
     let targetYaw = Number(yaw);
     let targetPitch = Number(pitch);
@@ -374,6 +374,49 @@ export class ManualController extends EventEmitter {
     }
   }
 
+  async swapHands() {
+    if (!this.isActive() || !this.bot) return false;
+    try {
+      const held = this.bot.heldItem;
+      const offhand = this.bot.inventory?.slots?.[45];
+      if (held && typeof this.bot.equip === 'function') {
+        await this.bot.equip(held, 'off-hand');
+      } else if (offhand && typeof this.bot.equip === 'function') {
+        await this.bot.equip(offhand, 'hand');
+      }
+      return true;
+    } catch (err) {
+      logger.debug(`[ManualController] swapHands Fehler: ${err.message}`);
+      return false;
+    }
+  }
+
+  startUsingItem() {
+    if (!this.isActive() || !this.bot) return false;
+    if (typeof this.bot.activateItem === 'function') {
+      try {
+        this.bot.activateItem(false);
+        return true;
+      } catch (err) {
+        logger.debug(`[ManualController] startUsingItem Fehler: ${err.message}`);
+      }
+    }
+    return false;
+  }
+
+  stopUsingItem() {
+    if (!this.isActive() || !this.bot) return false;
+    if (typeof this.bot.deactivateItem === 'function') {
+      try {
+        this.bot.deactivateItem();
+        return true;
+      } catch (err) {
+        logger.debug(`[ManualController] stopUsingItem Fehler: ${err.message}`);
+      }
+    }
+    return false;
+  }
+
   // --- HUD & Telemetry Helpers ---
 
   inspectTarget(maxDistance = 4.5) {
@@ -443,6 +486,78 @@ export class ManualController extends EventEmitter {
       });
     }
     return hotbar;
+  }
+
+  getFullInventory() {
+    if (!this.bot || !this.bot.inventory) return null;
+    const inv = this.bot.inventory;
+    const slots = inv.slots || {};
+
+    const formatItem = (item, slotIndex) => {
+      if (!item) return null;
+      return {
+        slot: slotIndex,
+        name: item.name,
+        displayName: item.displayName || item.name,
+        count: item.count,
+        type: item.type,
+        durabilityUsed: item.durabilityUsed || 0,
+        maxDurability: item.maxDurability || 0
+      };
+    };
+
+    // Armor-Slots: 5: Helm, 6: Brustpanzer, 7: Hose, 8: Stiefel
+    const armor = {
+      head: formatItem(slots[5], 5),
+      torso: formatItem(slots[6], 6),
+      legs: formatItem(slots[7], 7),
+      feet: formatItem(slots[8], 8)
+    };
+
+    // Zweithand (Off-hand): Slot 45
+    const offhand = formatItem(slots[45], 45);
+
+    // Hauptinventar: Slots 9..35 (3 Zeilen à 9 Slots = 27 Slots)
+    const main = [];
+    for (let i = 9; i <= 35; i++) {
+      main.push(formatItem(slots[i], i));
+    }
+
+    // Hotbar: Slots 36..44 (9 Slots)
+    const hotbar = [];
+    for (let i = 36; i <= 44; i++) {
+      hotbar.push(formatItem(slots[i], i));
+    }
+
+    // Am Mauszeiger schwebendes Item (Selected / Held by cursor)
+    const selectedItem = inv.selectedItem ? formatItem(inv.selectedItem, -1) : null;
+
+    // Aktiver Behälter (Truhe, Werkbank, Ofen, etc.), falls geöffnet
+    let container = null;
+    const curWin = this.bot.currentWindow;
+    if (curWin && curWin.id !== 0) {
+      const containerSlots = [];
+      const end = curWin.inventoryStart || 0;
+      for (let i = 0; i < end; i++) {
+        containerSlots.push(formatItem(curWin.slots[i], i));
+      }
+      container = {
+        id: curWin.id,
+        type: curWin.type,
+        title: curWin.title || 'Container',
+        slots: containerSlots
+      };
+    }
+
+    return {
+      armor,
+      offhand,
+      main,
+      hotbar,
+      selectedItem,
+      container,
+      quickBarSlot: this.bot.quickBarSlot ?? 0
+    };
   }
 
   isInteractableBlock(name) {
