@@ -77,6 +77,7 @@
               <button id="btnReloadViewer" class="btn-micro" title="Viewer neu laden" type="button">↺ Neu laden</button>
               <button id="btnFullscreenViewer" class="btn-micro" title="Vollbildmodus aktivieren" type="button">⛶ Vollbild</button>
               <button id="btnPopoutViewer" class="btn-micro btn-popout" title="Kamera in separatem Fenster/Tab öffnen" type="button">↗ Auslagern</button>
+              <button id="btnOpenInventory" class="btn-micro btn-inventory" title="Minecraft Inventar öffnen (E)" type="button">🎒 Inventar (E)</button>
               <button id="btnToggleGamemode" class="btn-micro btn-gamemode" title="Gamemode starten: Vollbild & Maussteuerung (Pointer Lock)" type="button">🎮 Gamemode</button>
               <button id="btnPopoutGamemode" class="btn-micro btn-popout" title="Gamemode in separatem Fenster/Tab öffnen" type="button">↗ Popout</button>
             </div>
@@ -113,6 +114,12 @@
                   <div class="crosshair-reticle"></div>
                 </div>
 
+                <!-- Mining / Digging Progress -->
+                <div id="gamemodeDigProgress" class="gamemode-dig-progress hidden">
+                  <div class="dig-progress-bar"><div id="digProgressFill" class="dig-progress-fill" style="width: 0%"></div></div>
+                  <span id="digProgressText" class="dig-progress-text">0%</span>
+                </div>
+
                 <!-- Raycast Block/Entity Inspection Tooltip -->
                 <div id="gamemodeRaycastTooltip" class="gamemode-raycast-tooltip hidden">
                   <div class="raycast-header">
@@ -142,47 +149,49 @@
 
                 <!-- 9-Slot Minecraft Hotbar -->
                 <div id="gamemodeHotbar" class="gamemode-hotbar" role="toolbar" aria-label="Minecraft Quickbar Hotbar">
-                  <div class="hotbar-slot active" data-slot="0" id="hotbarSlot0">
+                  <div id="hudOffhandSlot" class="hotbar-offhand-slot" title="Nebenhand (F)"></div>
+                  <div id="hotbarSelectionFrame" class="hotbar-selection-frame"></div>
+                  <div class="hotbar-slot active" data-slot="0" id="hotbarSlot0" style="left: calc(1px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">1</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="1" id="hotbarSlot1">
+                  <div class="hotbar-slot" data-slot="1" id="hotbarSlot1" style="left: calc(21px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">2</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="2" id="hotbarSlot2">
+                  <div class="hotbar-slot" data-slot="2" id="hotbarSlot2" style="left: calc(41px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">3</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="3" id="hotbarSlot3">
+                  <div class="hotbar-slot" data-slot="3" id="hotbarSlot3" style="left: calc(61px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">4</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="4" id="hotbarSlot4">
+                  <div class="hotbar-slot" data-slot="4" id="hotbarSlot4" style="left: calc(81px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">5</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="5" id="hotbarSlot5">
+                  <div class="hotbar-slot" data-slot="5" id="hotbarSlot5" style="left: calc(101px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">6</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="6" id="hotbarSlot6">
+                  <div class="hotbar-slot" data-slot="6" id="hotbarSlot6" style="left: calc(121px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">7</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="7" id="hotbarSlot7">
+                  <div class="hotbar-slot" data-slot="7" id="hotbarSlot7" style="left: calc(141px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">8</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
                   </div>
-                  <div class="hotbar-slot" data-slot="8" id="hotbarSlot8">
+                  <div class="hotbar-slot" data-slot="8" id="hotbarSlot8" style="left: calc(161px * var(--mc-hud-scale, 2.5));">
                     <span class="slot-num">9</span>
                     <span class="slot-icon"></span>
                     <span class="slot-count"></span>
@@ -201,62 +210,68 @@
               </div>
 
               <!-- Full Minecraft Inventory Modal (Key: E) -->
-              <div id="gamemodeInventoryModal" class="gamemode-inventory-modal hidden" role="dialog" aria-modal="true" aria-label="Minecraft Inventar">
-                <div class="inventory-card">
-                  <div class="inventory-header">
-                    <span class="inventory-title">📦 INVENTAR & AUSRÜSTUNG</span>
-                    <div class="inventory-header-hints">
-                      <span class="inv-shortcut-hint">Klick: Nehmen/Legen | Shift+Klick: Schnelltransfer | Q: Ablegen</span>
-                      <button type="button" id="btnCloseInventory" class="btn-inv-close" title="Schließen (E / ESC)">✕</button>
-                    </div>
+              <div id="gamemodeInventoryModal" class="gamemode-inventory-modal hidden" role="dialog" aria-modal="true" aria-labelledby="gamemodeInventoryTitle">
+                <!-- Standard Player Survival Inventory Window (176x166) -->
+                <div id="mcPlayerInventoryWindow" class="mc-inventory-window" role="region" aria-label="Minecraft Inventar">
+                  <span id="gamemodeInventoryTitle" class="visually-hidden">Minecraft Inventar</span>
+                  <button type="button" id="btnCloseInventory" class="btn-mc-close" title="Schließen (E / ESC)" aria-label="Schließen">✕</button>
+
+                  <!-- Labels -->
+                  <span class="mc-gui-label mc-label-crafting">Herstellung</span>
+                  <span class="mc-gui-label mc-label-inventory">Inventar</span>
+
+                  <!-- Armor Slots (5, 6, 7, 8) -->
+                  <div class="mc-slot armor-slot" data-slot="5" id="invSlot5" title="Helm" style="left: calc(7px * var(--mc-gui-scale)); top: calc(7px * var(--mc-gui-scale));"></div>
+                  <div class="mc-slot armor-slot" data-slot="6" id="invSlot6" title="Brustpanzer" style="left: calc(7px * var(--mc-gui-scale)); top: calc(25px * var(--mc-gui-scale));"></div>
+                  <div class="mc-slot armor-slot" data-slot="7" id="invSlot7" title="Hose" style="left: calc(7px * var(--mc-gui-scale)); top: calc(43px * var(--mc-gui-scale));"></div>
+                  <div class="mc-slot armor-slot" data-slot="8" id="invSlot8" title="Stiefel" style="left: calc(7px * var(--mc-gui-scale)); top: calc(61px * var(--mc-gui-scale));"></div>
+
+                  <!-- Player Doll Preview Area -->
+                  <div class="mc-player-preview" id="mcPlayerPreview">
+                    <canvas id="mcPlayerDollCanvas" width="51" height="72"></canvas>
                   </div>
 
-                  <!-- Optional Container Box (Active Chest / Table / etc.) -->
-                  <div id="inventoryContainerSection" class="inv-section container-section hidden">
-                    <div class="inv-section-title" id="invContainerTitle">Kiste</div>
-                    <div id="invContainerGrid" class="inv-grid container-grid"></div>
-                  </div>
+                  <!-- Offhand Slot (45) -->
+                  <div class="mc-slot offhand-slot" data-slot="45" id="invSlot45" title="Zweithand (F)" style="left: calc(76px * var(--mc-gui-scale)); top: calc(61px * var(--mc-gui-scale));"></div>
 
-                  <!-- Upper Row: Armor, Offhand & Quick-Craft / Character -->
-                  <div class="inv-upper-row">
-                    <div class="inv-equipment-group">
-                      <span class="inv-group-label">Rüstung & Nebenhand</span>
-                      <div class="inv-equipment-slots">
-                        <div class="inv-slot armor-slot" data-slot="5" id="invSlot5" title="Helm"><span class="slot-bg-icon">🪖</span><span class="slot-count"></span></div>
-                        <div class="inv-slot armor-slot" data-slot="6" id="invSlot6" title="Brustpanzer"><span class="slot-bg-icon">🥋</span><span class="slot-count"></span></div>
-                        <div class="inv-slot armor-slot" data-slot="7" id="invSlot7" title="Hose"><span class="slot-bg-icon">👖</span><span class="slot-count"></span></div>
-                        <div class="inv-slot armor-slot" data-slot="8" id="invSlot8" title="Stiefel"><span class="slot-bg-icon">👢</span><span class="slot-count"></span></div>
-                        <div class="inv-slot offhand-slot" data-slot="45" id="invSlot45" title="Zweithand (F)"><span class="slot-bg-icon">🛡️</span><span class="slot-count"></span></div>
-                      </div>
-                    </div>
+                  <!-- 2x2 Crafting Grid (1, 2, 3, 4) & Output (0) -->
+                  <div class="mc-slot crafting-slot" data-slot="1" id="invSlot1" title="Herstellung (Oben Links)" style="left: calc(97px * var(--mc-gui-scale)); top: calc(17px * var(--mc-gui-scale));"></div>
+                  <div class="mc-slot crafting-slot" data-slot="2" id="invSlot2" title="Herstellung (Oben Rechts)" style="left: calc(115px * var(--mc-gui-scale)); top: calc(17px * var(--mc-gui-scale));"></div>
+                  <div class="mc-slot crafting-slot" data-slot="3" id="invSlot3" title="Herstellung (Unten Links)" style="left: calc(97px * var(--mc-gui-scale)); top: calc(35px * var(--mc-gui-scale));"></div>
+                  <div class="mc-slot crafting-slot" data-slot="4" id="invSlot4" title="Herstellung (Unten Rechts)" style="left: calc(115px * var(--mc-gui-scale)); top: calc(35px * var(--mc-gui-scale));"></div>
+                  <div class="mc-slot crafting-output-slot" data-slot="0" id="invSlot0" title="Herstellungsergebnis" style="left: calc(153px * var(--mc-gui-scale)); top: calc(27px * var(--mc-gui-scale));"></div>
 
-                    <div class="inv-quick-actions">
-                      <span class="inv-group-label">Schnellaktionen</span>
-                      <div class="inv-actions-buttons">
-                        <button type="button" id="btnInvDropHeld" class="btn-micro" title="Ausgewähltes Item wegwerfen (Q)">Item wegwerfen (Q)</button>
-                        <button type="button" id="btnInvSwapHands" class="btn-micro" title="Haupt- und Nebenhand tauschen (F)">Hand tauschen (F)</button>
-                      </div>
-                    </div>
-                  </div>
+                  <!-- Main Inventory Slots (9..35) -->
+                  <div id="invMainGrid" class="mc-grid-container main-grid"></div>
 
-                  <!-- Main Inventory (3 rows x 9 slots = 27 slots: 9..35) -->
-                  <div class="inv-section">
-                    <span class="inv-group-label">Hauptinventar</span>
-                    <div id="invMainGrid" class="inv-grid main-grid"></div>
-                  </div>
+                  <!-- Hotbar Slots (36..44) -->
+                  <div id="invHotbarGrid" class="mc-grid-container hotbar-grid"></div>
+                </div>
 
-                  <!-- Hotbar Inventory (1 row x 9 slots = 9 slots: 36..44) -->
-                  <div class="inv-section hotbar-section">
-                    <span class="inv-group-label">Schnellzugriffsleiste (Hotbar)</span>
-                    <div id="invHotbarGrid" class="inv-grid hotbar-grid"></div>
-                  </div>
+                <!-- Active Container Window (Chests, etc.) -->
+                <div id="inventoryContainerSection" class="mc-container-window hidden" role="region" aria-label="Behälter Inventar">
+                  <span class="mc-gui-label mc-label-container-title" id="invContainerTitle">Truhe</span>
+                  <span class="mc-gui-label mc-label-container-inv">Inventar</span>
+                  <button type="button" id="btnCloseContainer" class="btn-mc-close" title="Schließen (E / ESC)" aria-label="Schließen">✕</button>
+                  <div id="invContainerGrid" class="mc-container-grid"></div>
+                  <div id="invContainerPlayerMainGrid" class="mc-container-player-main-grid"></div>
+                  <div id="invContainerPlayerHotbarGrid" class="mc-container-player-hotbar-grid"></div>
+                </div>
+
+                <!-- Inventory Keybind Shortcuts Hint -->
+                <div class="mc-inventory-hints">
+                  <span>[Shift+Klick] Schnelltransfer</span> • 
+                  <span>[Rechtsklick] Stapel teilen / 1 ablegen</span> • 
+                  <span>[Q] Item wegwerfen</span> • 
+                  <span>[1-9] Hotbar-Tausch</span> • 
+                  <span>[F] Hand tauschen</span>
                 </div>
               </div>
 
               <!-- In-Game Pause Menu (ESC) -->
-              <div id="gamemodePauseMenu" class="gamemode-pause-menu hidden" role="dialog" aria-modal="true" aria-label="Spiel pausiert">
+              <div id="gamemodePauseMenu" class="gamemode-pause-menu hidden" role="dialog" aria-modal="true" aria-labelledby="gamemodePauseTitle">
                 <div class="pause-menu-card">
-                  <div class="pause-menu-title">SPIEL PAUSIERT</div>
+                  <div id="gamemodePauseTitle" class="pause-menu-title">SPIEL PAUSIERT</div>
                   <div class="pause-menu-buttons">
                     <button type="button" id="btnResumeGame" class="btn-pause-primary">▶ Zurück zum Spiel</button>
                     <button type="button" id="btnOpenInventoryFromPause" class="btn-pause-secondary">🎒 Inventar öffnen (E)</button>

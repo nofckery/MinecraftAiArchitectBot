@@ -189,8 +189,34 @@ export class ViewerStateTranslator {
           const srcBlock = BlockClass.fromStateId(stateId);
           if (this.BlockTarget && targetBlockDef && targetBlockDef.name === srcBlock.name) {
             try {
-              const tgtBlock = this.BlockTarget.fromProperties(srcBlock.name, srcBlock.getProperties());
-              table[stateId] = tgtBlock.stateId;
+              const rawProps = srcBlock.getProperties() || {};
+              const filteredProps = {};
+              if (Array.isArray(targetBlockDef.states)) {
+                for (const st of targetBlockDef.states) {
+                  const val = rawProps[st.name];
+                  if (val !== undefined) {
+                    if (st.type === 'enum' || Array.isArray(st.values)) {
+                      if (st.values.includes(String(val))) {
+                        filteredProps[st.name] = val;
+                      }
+                    } else if (st.type === 'bool') {
+                      filteredProps[st.name] = Boolean(val);
+                    } else if (st.type === 'int') {
+                      if (Array.isArray(st.values) ? st.values.includes(Number(val)) : true) {
+                        filteredProps[st.name] = val;
+                      }
+                    } else {
+                      filteredProps[st.name] = val;
+                    }
+                  }
+                }
+              }
+              const tgtBlock = this.BlockTarget.fromProperties(targetBlockDef.name, filteredProps);
+              if (tgtBlock && tgtBlock.name === targetBlockDef.name && typeof tgtBlock.stateId === 'number') {
+                table[stateId] = tgtBlock.stateId;
+                continue;
+              }
+              table[stateId] = targetDefault;
               continue;
             } catch {
               // Property mismatch between versions: use target block default state
@@ -203,17 +229,42 @@ export class ViewerStateTranslator {
           if (this.BlockTarget && targetBlockDef) {
             try {
               // Attempt to retain common properties like facing, half, axis, waterlogged
-              const props = srcBlock.getProperties();
+              const props = srcBlock.getProperties() || {};
               const filteredProps = {};
               if (Array.isArray(targetBlockDef.states)) {
                 for (const st of targetBlockDef.states) {
-                  if (props[st.name] !== undefined) {
-                    filteredProps[st.name] = props[st.name];
+                  const val = props[st.name];
+                  if (val !== undefined) {
+                    if (st.type === 'enum' || Array.isArray(st.values)) {
+                      if (st.values.includes(String(val))) {
+                        filteredProps[st.name] = val;
+                      }
+                    } else if (st.type === 'bool') {
+                      filteredProps[st.name] = Boolean(val);
+                    } else if (st.type === 'int') {
+                      if (Array.isArray(st.values) ? st.values.includes(Number(val)) : true) {
+                        filteredProps[st.name] = val;
+                      }
+                    } else {
+                      filteredProps[st.name] = val;
+                    }
                   }
                 }
               }
+              if (targetBlockDef.name.endsWith('_slab')) {
+                if (!filteredProps.type) {
+                  filteredProps.type = (props.half === 'top' || props.type === 'top') ? 'top' : 'bottom';
+                }
+                if (filteredProps.waterlogged === undefined) {
+                  filteredProps.waterlogged = Boolean(props.waterlogged);
+                }
+              }
               const tgtBlock = this.BlockTarget.fromProperties(targetBlockDef.name, filteredProps);
-              table[stateId] = tgtBlock.stateId;
+              if (tgtBlock && tgtBlock.name === targetBlockDef.name && typeof tgtBlock.stateId === 'number') {
+                table[stateId] = tgtBlock.stateId;
+                continue;
+              }
+              table[stateId] = targetDefault;
               continue;
             } catch {
               table[stateId] = targetDefault;
@@ -237,8 +288,17 @@ export class ViewerStateTranslator {
    * @returns {Object} Target block definition
    */
   resolveFallbackBlock(srcName) {
+    if (!srcName || typeof srcName !== 'string') return null;
+    let cleanName = srcName.trim().toLowerCase();
+    if (cleanName.startsWith('minecraft:')) {
+      cleanName = cleanName.slice(10);
+    }
+    const bracketIdx = cleanName.indexOf('[');
+    if (bracketIdx !== -1) {
+      cleanName = cleanName.slice(0, bracketIdx).trim();
+    }
     const tgt = this.tgtMcData;
-    if (tgt.blocksByName[srcName]) return tgt.blocksByName[srcName];
+    if (tgt.blocksByName[cleanName]) return tgt.blocksByName[cleanName];
 
     // 1. Direct model substitutions for known modern/experimental blocks
     const directMap = {
@@ -266,41 +326,57 @@ export class ViewerStateTranslator {
       dried_ghast: 'white_wool',
       copper_golem_statue: 'iron_block',
       straw_bed: 'white_bed',
-      pale_oak_shelf: 'chiseled_bookshelf',
+      pale_oak_shelf: 'pale_oak_slab',
+      pale_oak_shelves: 'pale_oak_slab',
+      shelf_mushroom: 'brown_mushroom',
       deepslate_tiles: 'deepslate_tiles'
     };
 
-    if (directMap[srcName] && tgt.blocksByName[directMap[srcName]]) {
-      return tgt.blocksByName[directMap[srcName]];
+    if (directMap[cleanName] && tgt.blocksByName[directMap[cleanName]]) {
+      return tgt.blocksByName[directMap[cleanName]];
     }
 
     // 2. Heuristic pattern substitutions based on functional block family
-    if (srcName.endsWith('_bars')) return tgt.blocksByName['iron_bars'];
-    if (srcName.endsWith('_chain')) return tgt.blocksByName['chain'];
-    if (srcName.endsWith('_lantern')) return tgt.blocksByName['lantern'];
-    if (srcName.endsWith('_torch')) return tgt.blocksByName['torch'];
-    if (srcName.endsWith('_shelf')) return tgt.blocksByName['chiseled_bookshelf'] || tgt.blocksByName['bookshelf'];
-    if (srcName.includes('poplar_log')) return tgt.blocksByName['oak_log'];
-    if (srcName.includes('poplar_wood')) return tgt.blocksByName['oak_wood'];
-    if (srcName.includes('poplar_planks')) return tgt.blocksByName['oak_planks'];
-    if (srcName.includes('poplar_leaves')) return tgt.blocksByName['oak_leaves'];
-    if (srcName.includes('poplar_sapling')) return tgt.blocksByName['oak_sapling'];
-    if (srcName.includes('wool_stairs')) return tgt.blocksByName['oak_stairs'];
-    if (srcName.endsWith('_wall')) return tgt.blocksByName['cobblestone_wall'];
-    if (srcName.endsWith('_slab')) return tgt.blocksByName['stone_slab'];
-    if (srcName.endsWith('_stairs')) return tgt.blocksByName['stone_stairs'];
-    if (srcName.endsWith('_door')) return tgt.blocksByName['oak_door'];
-    if (srcName.endsWith('_trapdoor')) return tgt.blocksByName['oak_trapdoor'];
-    if (srcName.endsWith('_fence')) return tgt.blocksByName['oak_fence'];
-    if (srcName.endsWith('_fence_gate')) return tgt.blocksByName['oak_fence_gate'];
-    if (srcName.endsWith('_leaves')) return tgt.blocksByName['oak_leaves'];
-    if (srcName.endsWith('_log')) return tgt.blocksByName['oak_log'];
-    if (srcName.endsWith('_planks')) return tgt.blocksByName['oak_planks'];
-    if (srcName.includes('grass')) return tgt.blocksByName['short_grass'] || tgt.blocksByName['grass_block'];
-    if (srcName.includes('bush') || srcName.includes('shrub')) return tgt.blocksByName['dead_bush'];
-    if (srcName.includes('copper')) return tgt.blocksByName['copper_block'];
-    if (srcName.includes('sulfur')) return tgt.blocksByName['yellow_concrete'] || tgt.blocksByName['sandstone'];
-    if (srcName.includes('deepslate')) return tgt.blocksByName['deepslate_tiles'] || tgt.blocksByName['deepslate'];
+    if (cleanName.endsWith('_bars')) return tgt.blocksByName['iron_bars'];
+    if (cleanName.endsWith('_chain')) return tgt.blocksByName['chain'];
+    if (cleanName.endsWith('_lantern')) return tgt.blocksByName['lantern'];
+    if (cleanName.endsWith('_torch')) return tgt.blocksByName['torch'];
+    if (cleanName.includes('shelf_mushroom')) return tgt.blocksByName['brown_mushroom'] || tgt.blocksByName['red_mushroom'];
+    if (cleanName.endsWith('_shelf') || cleanName.endsWith('_shelves')) {
+      const wood = cleanName.endsWith('_shelves') ? cleanName.slice(0, -8) : cleanName.slice(0, -6);
+      if (wood === 'poplar') return tgt.blocksByName['oak_slab'] || tgt.blocksByName['oak_planks'];
+      const slabName = `${wood}_slab`;
+      if (tgt.blocksByName[slabName]) return tgt.blocksByName[slabName];
+      const trapdoorName = `${wood}_trapdoor`;
+      if (tgt.blocksByName[trapdoorName]) return tgt.blocksByName[trapdoorName];
+      const planksName = `${wood}_planks`;
+      if (tgt.blocksByName[planksName]) return tgt.blocksByName[planksName];
+      return tgt.blocksByName['oak_slab'] || tgt.blocksByName['oak_planks'];
+    }
+    if (cleanName === 'shelf' || cleanName === 'shelves') {
+      return tgt.blocksByName['oak_slab'] || tgt.blocksByName['oak_planks'];
+    }
+    if (cleanName.includes('poplar_log')) return tgt.blocksByName['oak_log'];
+    if (cleanName.includes('poplar_wood')) return tgt.blocksByName['oak_wood'];
+    if (cleanName.includes('poplar_planks')) return tgt.blocksByName['oak_planks'];
+    if (cleanName.includes('poplar_leaves')) return tgt.blocksByName['oak_leaves'];
+    if (cleanName.includes('poplar_sapling')) return tgt.blocksByName['oak_sapling'];
+    if (cleanName.includes('wool_stairs')) return tgt.blocksByName['oak_stairs'];
+    if (cleanName.endsWith('_wall')) return tgt.blocksByName['cobblestone_wall'];
+    if (cleanName.endsWith('_slab')) return tgt.blocksByName['stone_slab'];
+    if (cleanName.endsWith('_stairs')) return tgt.blocksByName['stone_stairs'];
+    if (cleanName.endsWith('_door')) return tgt.blocksByName['oak_door'];
+    if (cleanName.endsWith('_trapdoor')) return tgt.blocksByName['oak_trapdoor'];
+    if (cleanName.endsWith('_fence')) return tgt.blocksByName['oak_fence'];
+    if (cleanName.endsWith('_fence_gate')) return tgt.blocksByName['oak_fence_gate'];
+    if (cleanName.endsWith('_leaves')) return tgt.blocksByName['oak_leaves'];
+    if (cleanName.endsWith('_log')) return tgt.blocksByName['oak_log'];
+    if (cleanName.endsWith('_planks')) return tgt.blocksByName['oak_planks'];
+    if (cleanName.includes('grass')) return tgt.blocksByName['short_grass'] || tgt.blocksByName['grass_block'];
+    if (cleanName.includes('bush') || cleanName.includes('shrub')) return tgt.blocksByName['dead_bush'];
+    if (cleanName.includes('copper')) return tgt.blocksByName['copper_block'];
+    if (cleanName.includes('sulfur')) return tgt.blocksByName['yellow_concrete'] || tgt.blocksByName['sandstone'];
+    if (cleanName.includes('deepslate')) return tgt.blocksByName['deepslate_tiles'] || tgt.blocksByName['deepslate'];
 
     return tgt.blocksByName['stone'] || tgt.blocksByName['dirt'] || tgt.blocksByName['air'];
   }
@@ -374,13 +450,70 @@ export class ViewerStateTranslator {
     if (typeof sourceBlock.stateId === 'number') {
       return this.translateStateId(sourceBlock.stateId);
     }
-    if (sourceBlock.name && typeof sourceBlock.getProperties === 'function' && this.BlockTarget) {
+    const rawName = sourceBlock.name;
+    let cleanName = (typeof rawName === 'string') ? rawName.trim().toLowerCase() : '';
+    if (cleanName.startsWith('minecraft:')) cleanName = cleanName.slice(10);
+    const bIdx = cleanName.indexOf('[');
+    if (bIdx !== -1) cleanName = cleanName.slice(0, bIdx).trim();
+
+    if (cleanName && typeof sourceBlock.getProperties === 'function' && this.BlockTarget) {
       try {
-        const targetBlock = this.BlockTarget.fromProperties(sourceBlock.name, sourceBlock.getProperties());
-        if (targetBlock && typeof targetBlock.stateId === 'number') {
+        const rawProps = sourceBlock.getProperties() || {};
+        const targetBlock = this.BlockTarget.fromProperties(cleanName, rawProps);
+        if (targetBlock && targetBlock.name === cleanName && typeof targetBlock.stateId === 'number') {
           return targetBlock.stateId;
         }
       } catch {}
+
+      const fallback = this.resolveFallbackBlock(cleanName);
+      if (fallback) {
+        try {
+          const props = sourceBlock.getProperties() || {};
+          const filteredProps = {};
+          if (Array.isArray(fallback.states)) {
+            for (const st of fallback.states) {
+              const val = props[st.name];
+              if (val !== undefined) {
+                if (st.type === 'enum' || Array.isArray(st.values)) {
+                  if (st.values.includes(String(val))) {
+                    filteredProps[st.name] = val;
+                  }
+                } else if (st.type === 'bool') {
+                  filteredProps[st.name] = Boolean(val);
+                } else if (st.type === 'int') {
+                  if (Array.isArray(st.values) ? st.values.includes(Number(val)) : true) {
+                    filteredProps[st.name] = val;
+                  }
+                } else {
+                  filteredProps[st.name] = val;
+                }
+              }
+            }
+          }
+          if (fallback.name.endsWith('_slab')) {
+            if (!filteredProps.type) {
+              filteredProps.type = (props.half === 'top' || props.type === 'top') ? 'top' : 'bottom';
+            }
+            if (filteredProps.waterlogged === undefined) {
+              filteredProps.waterlogged = Boolean(props.waterlogged);
+            }
+          }
+          const tgtBlock = this.BlockTarget.fromProperties(fallback.name, filteredProps);
+          if (tgtBlock && tgtBlock.name === fallback.name && typeof tgtBlock.stateId === 'number') {
+            return tgtBlock.stateId;
+          }
+        } catch {}
+        if (typeof fallback.defaultState === 'number') {
+          return fallback.defaultState;
+        }
+      }
+    }
+
+    if (cleanName) {
+      const targetDef = this.tgtMcData.blocksByName[cleanName] || this.resolveFallbackBlock(cleanName);
+      if (targetDef && typeof targetDef.defaultState === 'number') {
+        return targetDef.defaultState;
+      }
     }
     if (typeof sourceBlock.type === 'number') {
       const rawState = (sourceBlock.type << 4) | (sourceBlock.metadata || 0);

@@ -38,7 +38,7 @@
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node test/dryRunTest.js && node test/missionControlTest.js && node test/improvementsTest.js && node test/milestone1SurvivalTest.js && node test/milestone2SurvivalTest.js && node test/credentialVaultTest.js && node test/modelConnectionTest.js && node test/deviceFlowAndBffTest.js && node test/settingsAndOnboardingTest.js && node test/dashboardCockpitTest.js && node test/msaAuthIntegrationTest.js && node test/builderModularizationTest.js && node test/scaffoldManagerTest.js && node test/viewerStateTranslatorTest.js && node test/manualGamemodeBackendTest.js && node test/manualGamemodeWsTest.js && node test/manualGamemodeFrontendTest.js && node test/manualGamemodeIntegrationTest.js && node test/viewerFullscreenAndPopoutTest.js && node test/versionCompatibilityLiveTest.js && node test/schematicExtensionsSotaTest.js && node test/gamemodePerfectionTest.js",
+    "test": "node test/dryRunTest.js && node test/missionControlTest.js && node test/improvementsTest.js && node test/milestone1SurvivalTest.js && node test/milestone2SurvivalTest.js && node test/credentialVaultTest.js && node test/modelConnectionTest.js && node test/deviceFlowAndBffTest.js && node test/settingsAndOnboardingTest.js && node test/dashboardCockpitTest.js && node test/msaAuthIntegrationTest.js && node test/builderModularizationTest.js && node test/scaffoldManagerTest.js && node test/viewerStateTranslatorTest.js && node test/manualGamemodeBackendTest.js && node test/manualGamemodeWsTest.js && node test/manualGamemodeFrontendTest.js && node test/manualGamemodeIntegrationTest.js && node test/viewerFullscreenAndPopoutTest.js && node test/versionCompatibilityLiveTest.js && node test/schematicExtensionsSotaTest.js && node test/gamemodePerfectionTest.js && node test/survivalHardeningAndSensibleImprovementsTest.js && node test/manualBlockInteractionPerfectionTest.js",
     "test:schem": "node test/schematicExtensionsSotaTest.js",
     "test:version": "node test/versionCompatibilityLiveTest.js",
     "test:dry": "node test/dryRunTest.js",
@@ -60,7 +60,9 @@
     "test:gamemode-frontend": "node test/manualGamemodeFrontendTest.js",
     "test:gamemode-integration": "node test/manualGamemodeIntegrationTest.js",
     "test:gamemode-perfection": "node test/gamemodePerfectionTest.js",
-    "test:gamemode": "node test/manualGamemodeBackendTest.js && node test/manualGamemodeWsTest.js && node test/manualGamemodeFrontendTest.js && node test/manualGamemodeIntegrationTest.js && node test/gamemodePerfectionTest.js",
+    "test:block-interaction": "node test/manualBlockInteractionPerfectionTest.js",
+    "test:gamemode": "node test/manualGamemodeBackendTest.js && node test/manualGamemodeWsTest.js && node test/manualGamemodeFrontendTest.js && node test/manualGamemodeIntegrationTest.js && node test/gamemodePerfectionTest.js && node test/manualBlockInteractionPerfectionTest.js",
+    "test:survival-hardening": "node test/survivalHardeningAndSensibleImprovementsTest.js",
     "test:popout": "node test/viewerFullscreenAndPopoutTest.js",
     "check:syntax": "node --check src/web/public/app.js && node --check src/web/public/js/viewerController.js && node --check src/web/public/js/popoutViewer.js && node --check src/web/public/js/threeViewport.js && node --check src/web/public/js/manualCockpit.js"
   },

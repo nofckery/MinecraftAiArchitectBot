@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-68a063?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js Version" />
   <img src="https://img.shields.io/badge/Minecraft-1.20.4%20--%2026.3-3d85c6?style=for-the-badge&logo=minecraft&logoColor=white" alt="Minecraft Version" />
   <img src="https://img.shields.io/badge/Protocol-777%20Ready-blueviolet?style=for-the-badge&logo=curseforge&logoColor=white" alt="Protocol 777 Ready" />
-  <img src="https://img.shields.io/badge/Test_Suites-22%2F22%20PASS%20(775%20Tests)-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="775 Tests PASS" />
+  <img src="https://img.shields.io/badge/Test_Suites-24%2F24%20PASS%20(841%20Tests)-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="841 Tests PASS" />
   <img src="https://img.shields.io/badge/Survival-Autonomous%20v2.1-success?style=for-the-badge&logo=shield&logoColor=white" alt="Survival Ready" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT" />
 </p>
@@ -82,7 +82,7 @@ npm start
  ├─────────────────────────────────────────────────────────────────────────────┤
  │  6. 🔒 ENTERPRISE SICHERHEIT & 100% OFFLINE QS                              │
  │     • AES-256-GCM Credential Vault (keine Klartext-Tokens auf Festplatte)   │
- │     • 22 automatisierte Testsuiten (775 Tests), 100% offline & deterministisch│
+ │     • 24 automatisierte Testsuiten (841 Tests), 100% offline & deterministisch│
  └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -105,7 +105,7 @@ npm start
    - [6.7 1-Account Session Handoff](#67-1-account-session-handoff)
    - [6.8 Modell-Cockpit & Credential Vault](#68-modell-cockpit--credential-vault)
 7. [Minecraft Server Setup (1.20.4 bis 26.3)](#7-minecraft-server-setup-1204-bis-263)
-8. [Testsuite & Qualitätssicherung (22 Suiten, 775 Tests)](#8-testsuite--qualitätssicherung-22-suiten-775-tests)
+8. [Testsuite & Qualitätssicherung (24 Suiten, 841 Tests)](#8-testsuite--qualitätssicherung-24-suiten-841-tests)
 9. [Gemeinsam auf GitHub arbeiten (Für Freunde & Contributors)](#9-gemeinsam-auf-github-arbeiten-für-freunde--contributors)
 10. [Troubleshooting & FAQ](#10-troubleshooting--faq)
 11. [Lizenz](#11-lizenz)
@@ -167,7 +167,7 @@ Das Projekt ist in modular entkoppelte Schichten unterteilt:
 ```text
 MinecraftAiArchitectBot/
 ├── index.js                      # Haupt-Einstiegspunkt (startet Bot & Dashboard)
-├── package.json                  # Abhängigkeiten, Metadaten und 22 Testskripte
+├── package.json                  # Abhängigkeiten, Metadaten und 24 Testskripte
 ├── .env.example                  # Vollständig dokumentierte Konfigurationsvorlage
 ├── .gitignore                    # Schützt Secrets (.env, .vault, logs) vor Git
 ├── CONTRIBUTING.md               # Richtlinien für Mitwirkende & Freunde
@@ -178,16 +178,19 @@ MinecraftAiArchitectBot/
 │   ├── ai/                       # Kognitive Schicht: LLM-Router, Sandbox & Prompts
 │   │   ├── architectAgent.js     # VM-Sandbox für Code-Generierung
 │   │   ├── llmRouter.js          # Multi-Provider Failover Kaskade
+│   │   ├── secretMasker.js       # Sicheres Maskieren von API-Keys in UI/Logs
 │   │   ├── safeProbeWorker.js    # Timeout-sichere Endpunkt-Prüfung
 │   │   └── localModelScanner.js  # Auto-Erkennung von Ollama / LM Studio
 │   ├── bot/                      # Bot-Steuerung & Mineflayer Lifecycle
 │   │   ├── botClient.js          # Verbindung, Events & Server-Rechte
 │   │   ├── chatController.js     # Chatbefehle (!schem, !come, !build etc.)
 │   │   ├── manualController.js   # Gamemode WASD-, Look- & Inventar-Engine
+│   │   ├── manual/               # Gamemode Modularisierung (Raycast, Serializer)
 │   │   └── threatManager.js      # Monster-Erkennung, Schild & Nahkampf
 │   ├── builder/                  # Geometrie & Bau-Engine
 │   │   ├── voxelCanvas.js        # 3D-Voxel-Matrix mit Transformationen
-│   │   ├── structuralLinter.js   # Schwerkraft-, Durchgangs- & Semantik-Linter
+│   │   ├── structuralLinter.js   # Schwerkraft-, Durchgangs- & Beleuchtungs-Linter
+│   │   ├── blockTopology.js      # Block-Klassifizierung (Solide, Durchlässig)
 │   │   ├── greedyMesher.js       # Quader-Optimierung für /fill Befehle
 │   │   └── worldExecutor.js      # Blockplatzierung & Survival-Ausführung
 │   ├── config/                   # Konfiguration & Versionierung
@@ -204,6 +207,7 @@ MinecraftAiArchitectBot/
 │   │   └── sleepController.js    # Betten-Suche & Ausweich-Handoff
 │   ├── utils/                    # Allgemeine Hilfsfunktionen
 │   │   ├── fileUtils.js          # Atomare Dateioperationen
+│   │   ├── rateLimiter.js        # Sliding-Window Rate-Limiter für Endpunkte
 │   │   └── logger.js             # Strukturierter Konsolen- & Datei-Logger
 │   ├── web/                      # Mission Control Web-Dashboard & Gamemode
 │   │   ├── dashboardServer.js    # Express HTTP & WebSocket Server
@@ -213,11 +217,12 @@ MinecraftAiArchitectBot/
 │   │   │   ├── app.js            # Frontend-Orchestrierung
 │   │   │   └── js/               # Submodule (manualCockpit, threeViewport etc.)
 │   │   ├── routes/               # REST-Endpunkte (Endpoints, Schematics, Setup)
-│   │   └── ws/                   # WebSocket-Dispatcher & Telemetrie
+│   │   ├── services/             # Telemetrie-, Sanitizer- & Viewer-Dienste
+│   │   └── ws/                   # WebSocket-Dispatcher & Gamemode-Handler
 │   └── world/                    # Wahrnehmung & Undo
 │       ├── worldScanner.js       # Terrain- & Wollmarkierungs-Scanner
 │       └── undoManager.js        # 100% verlässliches Block-Rückgängigmachen
-└── test/                         # 22 deterministische Offline-Testsuiten (775 Tests)
+└── test/                         # 24 deterministische Offline-Testsuiten (841 Tests)
 ```
 
 ---
@@ -397,12 +402,12 @@ simulation-distance=10
 
 ---
 
-## 8. Testsuite & Qualitätssicherung (22 Suiten, 775 Tests)
+## 8. Testsuite & Qualitätssicherung (24 Suiten, 841 Tests)
 
 Alle Tests laufen **100% offline**, ohne laufenden Minecraft-Server und ohne bezahlte Cloud-API-Keys:
 
 ```bash
-# Gesamte Testsuite ausführen (22 Suiten, 775 Tests, 100% PASS):
+# Gesamte Testsuite ausführen (24 Suiten, 841 Tests, 100% PASS):
 npm test
 
 # Gezielte Testsuiten ausführen:
@@ -419,8 +424,10 @@ npm run test:cockpit             # 38 Cockpit-Backend Tests
 npm run test:msa                 # 24 MSA-Auth Integration Tests
 npm run test:builder             # 26 Builder-Modularisierungs-Tests
 npm run test:scaffold            # 21 Gerüstbau & Scaffolding Tests
-npm run test:translator          # 28 Viewer-State Translator Tests
-npm run test:gamemode            # 256 Gamemode E2E, WS, Backend, Frontend & Perfection
+npm run test:translator          # 138 Viewer-State Translator & Shelf-Mapping Tests
+npm run test:gamemode            # 300+ Gamemode E2E, WS, Backend, Frontend, Digging & Perfection
+npm run test:block-interaction   # 44 First-Person Blockabbau & Container-Interaktions-Tests
+npm run test:survival-hardening  # 14 Safe Scaffolding, Mob-Lighting & Rate-Limiter Tests
 npm run test:popout              # 19 Multi-Monitor Popout Tests
 npm run test:version             # 20 Live-Versionskompatibilität (1.20 - 26.3)
 npm run test:schem               # 11 Litematica & Schematic SOTA Tests

@@ -52,6 +52,20 @@ let lastHotbarData = [];
 let lastFullInventory = null;
 let hoveredSlotIndex = null;
 
+// Minecraft Item Textures Cache
+let itemTexturesMap = {};
+let texturesLoading = false;
+
+// Interaction & Mining States
+let lastRaycastData = null;
+let isLeftMouseDown = false;
+let isRightMouseDown = false;
+let continuousMiningInterval = null;
+let continuousPlaceInterval = null;
+let currentMiningBlockKey = null;
+let currentMiningStartTime = 0;
+let estimatedMiningDuration = 1000;
+
 // UI States
 let isChatOpen = false;
 let isInventoryOpen = false;
@@ -83,6 +97,9 @@ export function initManualCockpit() {
     gamemodeLockBanner: document.getElementById('gamemodeLockBanner'),
     gamemodeCoordinates: document.getElementById('gamemodeCoordinates'),
     gamemodeCrosshair: document.getElementById('gamemodeCrosshair'),
+    gamemodeDigProgress: document.getElementById('gamemodeDigProgress'),
+    digProgressFill: document.getElementById('digProgressFill'),
+    digProgressText: document.getElementById('digProgressText'),
     gamemodeRaycastTooltip: document.getElementById('gamemodeRaycastTooltip'),
     raycastTargetType: document.getElementById('raycastTargetType'),
     raycastTargetDistance: document.getElementById('raycastTargetDistance'),
@@ -93,6 +110,8 @@ export function initManualCockpit() {
     hudFoodValue: document.getElementById('hudFoodValue'),
     gamemodeHotbar: document.getElementById('gamemodeHotbar'),
     hotbarSelectedItemLabel: document.getElementById('hotbarSelectedItemLabel'),
+    hotbarSelectionFrame: document.getElementById('hotbarSelectionFrame'),
+    hudOffhandSlot: document.getElementById('hudOffhandSlot'),
 
     // In-Game Chat Elements
     gamemodeChatArea: document.getElementById('gamemodeChatArea'),
@@ -102,11 +121,22 @@ export function initManualCockpit() {
     btnSendGamemodeChat: document.getElementById('btnSendGamemodeChat'),
 
     // In-Game Full Inventory Elements
+    btnOpenInventory: document.getElementById('btnOpenInventory'),
     gamemodeInventoryModal: document.getElementById('gamemodeInventoryModal'),
     btnCloseInventory: document.getElementById('btnCloseInventory'),
+    btnCloseContainer: document.getElementById('btnCloseContainer'),
+    mcPlayerInventoryWindow: document.getElementById('mcPlayerInventoryWindow'),
+    mcPlayerDollCanvas: document.getElementById('mcPlayerDollCanvas'),
     inventoryContainerSection: document.getElementById('inventoryContainerSection'),
     invContainerTitle: document.getElementById('invContainerTitle'),
     invContainerGrid: document.getElementById('invContainerGrid'),
+    invContainerPlayerMainGrid: document.getElementById('invContainerPlayerMainGrid'),
+    invContainerPlayerHotbarGrid: document.getElementById('invContainerPlayerHotbarGrid'),
+    invSlot0: document.getElementById('invSlot0'),
+    invSlot1: document.getElementById('invSlot1'),
+    invSlot2: document.getElementById('invSlot2'),
+    invSlot3: document.getElementById('invSlot3'),
+    invSlot4: document.getElementById('invSlot4'),
     invMainGrid: document.getElementById('invMainGrid'),
     invHotbarGrid: document.getElementById('invHotbarGrid'),
     btnInvDropHeld: document.getElementById('btnInvDropHeld'),
@@ -183,8 +213,14 @@ export function initManualCockpit() {
   }
 
   // 3. Inventory UI listeners
+  if (elements.btnOpenInventory) {
+    elements.btnOpenInventory.onclick = () => toggleInventory();
+  }
   if (elements.btnCloseInventory) {
     elements.btnCloseInventory.onclick = () => closeInventory();
+  }
+  if (elements.btnCloseContainer) {
+    elements.btnCloseContainer.onclick = () => closeInventory();
   }
   if (elements.btnInvDropHeld) {
     elements.btnInvDropHeld.onclick = () => {
@@ -196,9 +232,14 @@ export function initManualCockpit() {
       sendWS({ type: 'manual_action', action: 'swap_hands' });
     };
   }
+  if (elements.hudOffhandSlot) {
+    elements.hudOffhandSlot.onclick = () => {
+      sendWS({ type: 'manual_action', action: 'swap_hands' });
+    };
+  }
 
-  // Armor & offhand slot clicks
-  [5, 6, 7, 8, 45].forEach(slotId => {
+  // Fixed inventory slots: Crafting output (0), 2x2 Crafting (1-4), Armor (5-8), Offhand (45)
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 45].forEach(slotId => {
     const el = document.getElementById(`invSlot${slotId}`);
     if (el) {
       el.onclick = (e) => handleInventorySlotClick(slotId, e);
@@ -207,6 +248,33 @@ export function initManualCockpit() {
       el.onmouseleave = () => { if (hoveredSlotIndex === slotId) hoveredSlotIndex = null; hideSlotTooltip(); };
     }
   });
+
+  // Clicking outside inventory window (backdrop) drops held cursor item (slot: -999)
+  if (elements.gamemodeInventoryModal) {
+    elements.gamemodeInventoryModal.addEventListener('click', (e) => {
+      if (e.target === elements.gamemodeInventoryModal && lastFullInventory && lastFullInventory.selectedItem) {
+        sendWS({ type: 'inventory_click', slot: -999, button: 0, mode: 0 });
+      }
+    });
+    elements.gamemodeInventoryModal.addEventListener('contextmenu', (e) => {
+      if (e.target === elements.gamemodeInventoryModal && lastFullInventory && lastFullInventory.selectedItem) {
+        e.preventDefault();
+        sendWS({ type: 'inventory_click', slot: -999, button: 1, mode: 0 });
+      }
+    });
+  }
+
+  // Mouse tracking on player inventory to turn Steve's doll preview
+  if (elements.mcPlayerInventoryWindow) {
+    elements.mcPlayerInventoryWindow.addEventListener('mousemove', (e) => {
+      if (typeof elements.mcPlayerInventoryWindow.getBoundingClientRect === 'function') {
+        const rect = elements.mcPlayerInventoryWindow.getBoundingClientRect();
+        const normX = rect.width ? (e.clientX - rect.left) / rect.width : 0.5;
+        const normY = rect.height ? (e.clientY - rect.top) / rect.height : 0.5;
+        renderPlayerDoll(lastFullInventory, normX, normY);
+      }
+    });
+  }
 
   // 4. Pause Menu listeners
   if (elements.btnResumeGame) {
@@ -311,6 +379,9 @@ export function initManualCockpit() {
       slotEl.onclick = () => selectHotbarSlot(i);
     }
   }
+
+  // 13. Preload Authentic Minecraft Item Textures
+  loadItemTextures();
 }
 
 /**
@@ -609,7 +680,6 @@ export function handleIncomingChat(msg) {
 // ==============================================================================
 
 export function openInventory() {
-  if (!isGamemodeActive) return;
   if (isChatOpen) closeChat();
   if (isPauseMenuOpen) closePauseMenu();
 
@@ -621,6 +691,9 @@ export function openInventory() {
     try { document.exitPointerLock(); } catch {}
   }
   clearAllControls('inventory_opened');
+
+  // Request fresh inventory from server
+  sendWS({ type: 'get_inventory' });
 
   if (lastFullInventory) {
     renderFullInventory(lastFullInventory);
@@ -656,6 +729,45 @@ export function toggleInventory() {
   }
 }
 
+/**
+ * Asynchronously load item textures map from pre-generated JSON or API.
+ */
+export async function loadItemTextures() {
+  if (typeof fetch === 'undefined') return;
+  if (Object.keys(itemTexturesMap).length > 0 || texturesLoading) return;
+  texturesLoading = true;
+  try {
+    const res = await fetch('/img/mc/item_textures.json');
+    if (res && res.ok) {
+      itemTexturesMap = await res.json();
+      if (isInventoryOpen && lastFullInventory) {
+        renderFullInventory(lastFullInventory);
+      }
+      if (lastHotbarData && lastHotbarData.length > 0) {
+        renderHotbar(lastHotbarData, currentSelectedSlot);
+      }
+    }
+  } catch (err) {
+    console.warn('[ManualCockpit] Could not load item textures:', err);
+  } finally {
+    texturesLoading = false;
+  }
+}
+
+/**
+ * Get texture URL for a given Minecraft item or block name.
+ * @param {string} name
+ * @returns {string|null}
+ */
+export function getItemTextureUrl(name) {
+  if (!name) return null;
+  const clean = String(name).toLowerCase().trim().replace(/^minecraft:/, '');
+  if (itemTexturesMap && itemTexturesMap[clean]) {
+    return itemTexturesMap[clean];
+  }
+  return `/textures/1.20.1/item/${clean}.png`;
+}
+
 function handleInventorySlotClick(slotIndex, e) {
   if (typeof slotIndex !== 'number') return;
   e.preventDefault();
@@ -686,12 +798,14 @@ function showSlotTooltip(targetEl, slotIndex) {
     return;
   }
 
-  const name = item.displayName || item.name;
-  let html = `<strong>${name}</strong>`;
-  if (item.count > 1) html += ` <span style="color:#94a3b8">x${item.count}</span>`;
+  const name = item.displayName || item.name.replace(/_/g, ' ');
+  let html = `<div class="tooltip-title">${name}</div>`;
+  if (item.count > 1) {
+    html += `<div class="tooltip-meta">Anzahl: ${item.count}</div>`;
+  }
   if (item.maxDurability > 0) {
-    const remaining = item.maxDurability - (item.durabilityUsed || 0);
-    html += `<br><span style="color:#22c55e;font-size:10px">Haltbarkeit: ${remaining} / ${item.maxDurability}</span>`;
+    const remaining = Math.max(0, item.maxDurability - (item.durabilityUsed || 0));
+    html += `<div class="tooltip-durability">Haltbarkeit: ${remaining} / ${item.maxDurability}</div>`;
   }
 
   elements.inventoryItemTooltip.innerHTML = html;
@@ -704,81 +818,355 @@ function hideSlotTooltip() {
   }
 }
 
+/**
+ * Render slot content with authentic Minecraft textures, count labels, durability bars, and ghost icons.
+ */
+function renderItemSlotContent(el, item, ghostIconUrl = null) {
+  if (!el) return;
+  el._itemData = item;
+
+  // Mock test fallback where document.createElement might not be present
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+    if (item && item.name) {
+      el.innerHTML = `<span class="slot-icon">${getItemIcon(item.name)}</span><span class="slot-count">${item.count > 1 ? item.count : ''}</span>`;
+      if (el.classList && el.classList.add) el.classList.add('has-item');
+    } else {
+      el.innerHTML = `<span class="slot-icon"></span><span class="slot-count"></span>`;
+      if (el.classList && el.classList.remove) el.classList.remove('has-item');
+    }
+    return;
+  }
+
+  el.innerHTML = '';
+
+  if (item && item.name) {
+    el.classList.add('has-item');
+
+    // 1. Pixelated Item Texture Image
+    const img = document.createElement('img');
+    img.className = 'mc-item-icon slot-icon';
+    img.alt = item.displayName || item.name;
+    const texUrl = getItemTextureUrl(item.name);
+    if (texUrl) {
+      img.src = texUrl;
+      img.onerror = () => {
+        img.style.display = 'none';
+        if (!el.querySelector('.slot-icon-fallback')) {
+          const fb = document.createElement('span');
+          fb.className = 'slot-icon-fallback slot-icon';
+          fb.textContent = getItemIcon(item.name);
+          el.insertBefore(fb, el.firstChild);
+        }
+      };
+    } else {
+      img.style.display = 'none';
+      const fb = document.createElement('span');
+      fb.className = 'slot-icon-fallback slot-icon';
+      fb.textContent = getItemIcon(item.name);
+      el.appendChild(fb);
+    }
+    el.appendChild(img);
+
+    // 2. Stack count label with Minecraft font
+    if (item.count > 1) {
+      const countEl = document.createElement('span');
+      countEl.className = 'mc-item-count slot-count';
+      countEl.textContent = String(item.count);
+      el.appendChild(countEl);
+    }
+
+    // 3. Durability Bar
+    if (item.maxDurability > 0 && item.durabilityUsed > 0) {
+      const remaining = Math.max(0, item.maxDurability - item.durabilityUsed);
+      const pct = Math.max(0, Math.min(100, Math.round((remaining / item.maxDurability) * 100)));
+      const durBar = document.createElement('div');
+      durBar.className = 'mc-durability-bar';
+      const color = pct > 50 ? '#55ff55' : (pct > 20 ? '#ffff55' : '#ff5555');
+      durBar.innerHTML = `<div class="mc-durability-fill" style="width:${pct}%;background:${color}"></div>`;
+      el.appendChild(durBar);
+    }
+  } else {
+    el.classList.remove('has-item');
+    if (ghostIconUrl) {
+      const ghost = document.createElement('img');
+      ghost.className = 'slot-ghost-icon';
+      ghost.src = ghostIconUrl;
+      ghost.alt = '';
+      el.appendChild(ghost);
+    }
+  }
+}
+
+/**
+ * Render Steve player preview doll with animated head tracking and equipped armor.
+ */
+function renderPlayerDoll(inv, normX = 0.5, normY = 0.5) {
+  const canvas = elements.mcPlayerDollCanvas || (typeof document !== 'undefined' ? document.getElementById('mcPlayerDollCanvas') : null);
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+
+  const lookX = Math.max(-1, Math.min(1, (normX - 0.5) * 2));
+  const lookY = Math.max(-1, Math.min(1, (normY - 0.5) * 2));
+
+  const scale = 2.0;
+  const cx = canvas.width / 2;
+  const baseY = canvas.height - 4;
+
+  ctx.save();
+  ctx.translate(cx, baseY);
+
+  const getArmorColor = (item) => {
+    if (!item || !item.name) return null;
+    const n = item.name.toLowerCase();
+    if (n.includes('leather')) return '#7f5231';
+    if (n.includes('chainmail')) return '#878787';
+    if (n.includes('iron')) return '#d8d8d8';
+    if (n.includes('golden') || n.includes('gold')) return '#fbe84e';
+    if (n.includes('diamond')) return '#4dedf0';
+    if (n.includes('netherite')) return '#443a3b';
+    return '#aaaaaa';
+  };
+
+  const headArmor = getArmorColor(inv?.armor?.head);
+  const bodyArmor = getArmorColor(inv?.armor?.torso);
+  const legsArmor = getArmorColor(inv?.armor?.legs);
+  const feetArmor = getArmorColor(inv?.armor?.feet);
+
+  // 1. Legs
+  const legW = 4 * scale;
+  const legH = 12 * scale;
+  const legY = -legH;
+
+  // Left Leg
+  ctx.fillStyle = legsArmor || '#2b367d';
+  ctx.fillRect(-legW - 0.5, legY, legW, legH);
+  ctx.fillStyle = feetArmor || '#4c4c4c';
+  ctx.fillRect(-legW - 0.5, -3 * scale, legW, 3 * scale);
+
+  // Right Leg
+  ctx.fillStyle = legsArmor || '#2b367d';
+  ctx.fillRect(0.5, legY, legW, legH);
+  ctx.fillStyle = feetArmor || '#4c4c4c';
+  ctx.fillRect(0.5, -3 * scale, legW, 3 * scale);
+
+  // 2. Torso
+  const torsoW = 8 * scale;
+  const torsoH = 12 * scale;
+  const torsoY = legY - torsoH;
+  ctx.fillStyle = bodyArmor || '#00a2a7';
+  ctx.fillRect(-torsoW / 2, torsoY, torsoW, torsoH);
+
+  // Neck skin
+  if (!bodyArmor) {
+    ctx.fillStyle = '#c68c59';
+    ctx.fillRect(-scale, torsoY, 2 * scale, 1.5 * scale);
+  }
+
+  // 3. Arms
+  const armW = 4 * scale;
+  // Left Arm
+  ctx.fillStyle = bodyArmor || '#00a2a7';
+  ctx.fillRect(-torsoW / 2 - armW, torsoY, armW, 4 * scale);
+  ctx.fillStyle = bodyArmor || '#c68c59';
+  ctx.fillRect(-torsoW / 2 - armW, torsoY + 4 * scale, armW, 8 * scale);
+
+  // Right Arm
+  ctx.fillStyle = bodyArmor || '#00a2a7';
+  ctx.fillRect(torsoW / 2, torsoY, armW, 4 * scale);
+  ctx.fillStyle = bodyArmor || '#c68c59';
+  ctx.fillRect(torsoW / 2, torsoY + 4 * scale, armW, 8 * scale);
+
+  // 4. Head
+  const headSize = 8 * scale;
+  const headY = torsoY - headSize;
+  const headOffsetX = lookX * 2.2;
+  const headOffsetY = lookY * 1.4;
+
+  ctx.save();
+  ctx.translate(headOffsetX, headOffsetY);
+
+  // Skin
+  ctx.fillStyle = '#c68c59';
+  ctx.fillRect(-headSize / 2, headY, headSize, headSize);
+
+  // Hair
+  ctx.fillStyle = '#4a3219';
+  ctx.fillRect(-headSize / 2, headY, headSize, 2.5 * scale);
+  ctx.fillRect(-headSize / 2, headY + 2.5 * scale, 1 * scale, 3 * scale);
+  ctx.fillRect(headSize / 2 - 1 * scale, headY + 2.5 * scale, 1 * scale, 3 * scale);
+
+  // Eyes
+  const eyeY = headY + 3.5 * scale;
+  const eyeShift = lookX * 0.8;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-3 * scale + eyeShift, eyeY, 2 * scale, scale);
+  ctx.fillStyle = '#29388c';
+  ctx.fillRect(-2 * scale + eyeShift, eyeY, scale, scale);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(1 * scale + eyeShift, eyeY, 2 * scale, scale);
+  ctx.fillStyle = '#29388c';
+  ctx.fillRect(1 * scale + eyeShift, eyeY, scale, scale);
+
+  // Nose / mouth
+  ctx.fillStyle = '#9c5936';
+  ctx.fillRect(-scale + eyeShift * 0.5, eyeY + 1.5 * scale, 2 * scale, scale);
+
+  // Helmet
+  if (headArmor) {
+    ctx.fillStyle = headArmor;
+    ctx.fillRect(-headSize / 2 - 0.5 * scale, headY - 0.5 * scale, headSize + scale, headSize * 0.7);
+    ctx.fillRect(-headSize / 2 - 0.5 * scale, headY, scale, headSize * 0.9);
+    ctx.fillRect(headSize / 2 - 0.5 * scale, headY, scale, headSize * 0.9);
+  }
+
+  ctx.restore();
+  ctx.restore();
+}
+
 function renderFullInventory(inv) {
   if (!inv) return;
 
-  // 1. Armor Slots (5, 6, 7, 8)
-  const armorSlots = [
-    { id: 'invSlot5', item: inv.armor?.head, defaultIcon: '🪖' },
-    { id: 'invSlot6', item: inv.armor?.torso, defaultIcon: '🥋' },
-    { id: 'invSlot7', item: inv.armor?.legs, defaultIcon: '👖' },
-    { id: 'invSlot8', item: inv.armor?.feet, defaultIcon: '👢' },
-    { id: 'invSlot45', item: inv.offhand, defaultIcon: '🛡️' }
-  ];
+  // 1. Container Window vs Player Inventory Window
+  const isContainerOpen = inv.container && Array.isArray(inv.container.slots) && inv.container.slots.length > 0;
 
-  armorSlots.forEach(({ id, item, defaultIcon }) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el._itemData = item;
-    if (item && item.name) {
-      el.innerHTML = `<span class="slot-icon">${getItemIcon(item.name)}</span><span class="slot-count">${item.count > 1 ? item.count : ''}</span>`;
-      el.classList.add('has-item');
-    } else {
-      el.innerHTML = `<span class="slot-bg-icon">${defaultIcon}</span><span class="slot-count"></span>`;
-      el.classList.remove('has-item');
-    }
-  });
-
-  // 2. Main Inventory Grid (Slots 9..35 = 27 slots)
-  if (elements.invMainGrid) {
-    elements.invMainGrid.innerHTML = '';
-    const mainItems = Array.isArray(inv.main) ? inv.main : [];
-    for (let i = 0; i < 27; i++) {
-      const slotIndex = 9 + i;
-      const item = mainItems[i] || null;
-      const slotEl = createInventorySlotElement(slotIndex, item);
-      elements.invMainGrid.appendChild(slotEl);
-    }
-  }
-
-  // 3. Hotbar Grid (Slots 36..44 = 9 slots)
-  if (elements.invHotbarGrid) {
-    elements.invHotbarGrid.innerHTML = '';
-    const hotbarItems = Array.isArray(inv.hotbar) ? inv.hotbar : [];
-    for (let i = 0; i < 9; i++) {
-      const slotIndex = 36 + i;
-      const item = hotbarItems[i] || null;
-      const slotEl = createInventorySlotElement(slotIndex, item);
-      if (i === currentSelectedSlot) slotEl.classList.add('active');
-      elements.invHotbarGrid.appendChild(slotEl);
-    }
-  }
-
-  // 4. Container Grid (if active container opened, e.g. chest)
-  if (elements.inventoryContainerSection && elements.invContainerGrid) {
-    if (inv.container && Array.isArray(inv.container.slots) && inv.container.slots.length > 0) {
+  if (isContainerOpen) {
+    if (elements.mcPlayerInventoryWindow) elements.mcPlayerInventoryWindow.classList.add('hidden');
+    if (elements.inventoryContainerSection) {
       elements.inventoryContainerSection.classList.remove('hidden');
+      const numSlots = inv.container.slots.length;
+      if (numSlots > 27) {
+        elements.inventoryContainerSection.classList.add('double-chest');
+        elements.inventoryContainerSection.classList.remove('single-chest');
+      } else {
+        elements.inventoryContainerSection.classList.add('single-chest');
+        elements.inventoryContainerSection.classList.remove('double-chest');
+      }
+
       if (elements.invContainerTitle) {
         elements.invContainerTitle.textContent = inv.container.title || 'Behälter';
       }
-      elements.invContainerGrid.innerHTML = '';
-      inv.container.slots.forEach((item, idx) => {
-        const slotEl = createInventorySlotElement(idx, item);
-        elements.invContainerGrid.appendChild(slotEl);
-      });
-    } else {
-      elements.inventoryContainerSection.classList.add('hidden');
+
+      if (elements.invContainerGrid) {
+        elements.invContainerGrid.innerHTML = '';
+        inv.container.slots.forEach((item, idx) => {
+          const slotEl = createInventorySlotElement(idx, item);
+          elements.invContainerGrid.appendChild(slotEl);
+        });
+      }
+
+      // Container Player Main Grid (inventoryStart .. inventoryStart + 26)
+      const invStart = inv.container.inventoryStart !== undefined ? inv.container.inventoryStart : numSlots;
+      if (elements.invContainerPlayerMainGrid) {
+        elements.invContainerPlayerMainGrid.innerHTML = '';
+        const mainItems = Array.isArray(inv.main) ? inv.main : [];
+        for (let i = 0; i < 27; i++) {
+          const slotIdx = invStart + i;
+          const item = mainItems[i] || null;
+          const slotEl = createInventorySlotElement(slotIdx, item);
+          elements.invContainerPlayerMainGrid.appendChild(slotEl);
+        }
+      }
+
+      // Container Player Hotbar Grid (inventoryStart + 27 .. inventoryStart + 35)
+      if (elements.invContainerPlayerHotbarGrid) {
+        elements.invContainerPlayerHotbarGrid.innerHTML = '';
+        const hotbarItems = Array.isArray(inv.hotbar) ? inv.hotbar : [];
+        for (let i = 0; i < 9; i++) {
+          const slotIdx = invStart + 27 + i;
+          const item = hotbarItems[i] || null;
+          const slotEl = createInventorySlotElement(slotIdx, item);
+          if (i === currentSelectedSlot) slotEl.classList.add('active');
+          elements.invContainerPlayerHotbarGrid.appendChild(slotEl);
+        }
+      }
+    }
+  } else {
+    // Normal Player Inventory Window
+    if (elements.inventoryContainerSection) elements.inventoryContainerSection.classList.add('hidden');
+    if (elements.mcPlayerInventoryWindow) elements.mcPlayerInventoryWindow.classList.remove('hidden');
+
+    // Crafting Output (Slot 0)
+    const slot0El = elements.invSlot0 || document.getElementById('invSlot0');
+    if (slot0El) {
+      renderItemSlotContent(slot0El, inv.craftResult || null, null);
+    }
+
+    // 2x2 Crafting Grid (Slots 1, 2, 3, 4)
+    const craftingItems = Array.isArray(inv.crafting) ? inv.crafting : [];
+    [1, 2, 3, 4].forEach(slotId => {
+      const craftEl = document.getElementById(`invSlot${slotId}`);
+      if (craftEl) {
+        renderItemSlotContent(craftEl, craftingItems[slotId - 1] || null, null);
+      }
+    });
+
+    // Armor Slots (5, 6, 7, 8) & Offhand (45)
+    const armorDefs = [
+      { id: 'invSlot5', item: inv.armor?.head, ghost: '/img/mc/empty_armor_slot_helmet.png' },
+      { id: 'invSlot6', item: inv.armor?.torso, ghost: '/img/mc/empty_armor_slot_chestplate.png' },
+      { id: 'invSlot7', item: inv.armor?.legs, ghost: '/img/mc/empty_armor_slot_leggings.png' },
+      { id: 'invSlot8', item: inv.armor?.feet, ghost: '/img/mc/empty_armor_slot_boots.png' },
+      { id: 'invSlot45', item: inv.offhand, ghost: '/img/mc/empty_armor_slot_shield.png' }
+    ];
+    armorDefs.forEach(({ id, item, ghost }) => {
+      const el = document.getElementById(id);
+      if (el) {
+        renderItemSlotContent(el, item, ghost);
+      }
+    });
+
+    // Steve doll canvas
+    renderPlayerDoll(inv);
+
+    // Main Inventory (Slots 9..35 = 27 slots)
+    if (elements.invMainGrid) {
+      elements.invMainGrid.innerHTML = '';
+      const mainItems = Array.isArray(inv.main) ? inv.main : [];
+      for (let i = 0; i < 27; i++) {
+        const slotIndex = 9 + i;
+        const item = mainItems[i] || null;
+        const slotEl = createInventorySlotElement(slotIndex, item);
+        elements.invMainGrid.appendChild(slotEl);
+      }
+    }
+
+    // Hotbar Grid (Slots 36..44 = 9 slots)
+    if (elements.invHotbarGrid) {
+      elements.invHotbarGrid.innerHTML = '';
+      const hotbarItems = Array.isArray(inv.hotbar) ? inv.hotbar : [];
+      for (let i = 0; i < 9; i++) {
+        const slotIndex = 36 + i;
+        const item = hotbarItems[i] || null;
+        const slotEl = createInventorySlotElement(slotIndex, item);
+        if (i === currentSelectedSlot) slotEl.classList.add('active');
+        elements.invHotbarGrid.appendChild(slotEl);
+      }
     }
   }
 
-  // 5. Floating Held Item on cursor
+  // Floating Held Item on cursor
   if (elements.gamemodeHeldItemCursor) {
     if (inv.selectedItem && inv.selectedItem.name) {
       elements.gamemodeHeldItemCursor.classList.remove('hidden');
       const icon = elements.gamemodeHeldItemCursor.querySelector('.held-icon');
       const count = elements.gamemodeHeldItemCursor.querySelector('.held-count');
-      if (icon) icon.textContent = getItemIcon(inv.selectedItem.name);
-      if (count) count.textContent = inv.selectedItem.count > 1 ? String(inv.selectedItem.count) : '';
+      const texUrl = getItemTextureUrl(inv.selectedItem.name);
+
+      if (icon) {
+        if (texUrl && typeof document !== 'undefined' && typeof document.createElement === 'function') {
+          icon.innerHTML = `<img src="${texUrl}" class="mc-item-icon" alt="" style="width:32px;height:32px;image-rendering:pixelated">`;
+        } else {
+          icon.textContent = getItemIcon(inv.selectedItem.name);
+        }
+      }
+      if (count) {
+        count.textContent = inv.selectedItem.count > 1 ? String(inv.selectedItem.count) : '';
+      }
     } else {
       elements.gamemodeHeldItemCursor.classList.add('hidden');
     }
@@ -786,27 +1174,19 @@ function renderFullInventory(inv) {
 }
 
 function createInventorySlotElement(slotIndex, item) {
-  const el = document.createElement('div');
-  el.className = 'inv-slot';
-  el.dataset.slot = String(slotIndex);
-  el._itemData = item;
-
-  if (item && item.name) {
-    el.classList.add('has-item');
-    let durHtml = '';
-    if (item.maxDurability > 0 && item.durabilityUsed > 0) {
-      const percent = Math.max(0, Math.min(100, Math.round(((item.maxDurability - item.durabilityUsed) / item.maxDurability) * 100)));
-      const color = percent > 50 ? '#22c55e' : (percent > 20 ? '#eab308' : '#ef4444');
-      durHtml = `<div class="slot-durability"><div class="durability-fill" style="width:${percent}%;background:${color}"></div></div>`;
-    }
-    el.innerHTML = `
-      <span class="slot-icon">${getItemIcon(item.name)}</span>
-      <span class="slot-count">${item.count > 1 ? item.count : ''}</span>
-      ${durHtml}
-    `;
-  } else {
-    el.innerHTML = `<span class="slot-icon"></span><span class="slot-count"></span>`;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+    return {
+      classList: { add: () => {}, remove: () => {}, contains: () => false },
+      dataset: { slot: String(slotIndex) },
+      _itemData: item,
+      innerHTML: ''
+    };
   }
+
+  const el = document.createElement('div');
+  el.className = 'mc-slot inv-slot';
+  el.dataset.slot = String(slotIndex);
+  renderItemSlotContent(el, item, null);
 
   el.onclick = (e) => handleInventorySlotClick(slotIndex, e);
   el.oncontextmenu = (e) => handleInventorySlotClick(slotIndex, e);
@@ -896,6 +1276,17 @@ function onKeyDown(e) {
     case 'Digit4': case 'Digit5': case 'Digit6':
     case 'Digit7': case 'Digit8': case 'Digit9': {
       const slot = parseInt(e.code.replace('Digit', ''), 10) - 1;
+      if (isInventoryOpen && hoveredSlotIndex !== null) {
+        // Swap hovered slot item with hotbar slot (Minecraft Mode 2)
+        sendWS({
+          type: 'inventory_click',
+          slot: hoveredSlotIndex,
+          button: slot,
+          mode: 2
+        });
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        return;
+      }
       selectHotbarSlot(slot);
       break;
     }
@@ -915,7 +1306,17 @@ function onKeyDown(e) {
       if (typeof e.preventDefault === 'function') e.preventDefault();
       break;
     case 'KeyF':
-      sendWS({ type: 'manual_action', action: 'swap_hands' });
+      if (isInventoryOpen && hoveredSlotIndex !== null) {
+        // Swap hovered slot item with offhand (button 40 in mode 2)
+        sendWS({
+          type: 'inventory_click',
+          slot: hoveredSlotIndex,
+          button: 40,
+          mode: 2
+        });
+      } else {
+        sendWS({ type: 'manual_action', action: 'swap_hands' });
+      }
       if (typeof e.preventDefault === 'function') e.preventDefault();
       break;
     case 'KeyE':
@@ -1038,6 +1439,19 @@ export function clearAllControls(reason = 'unspecified') {
     movementState[k] = false;
   }
 
+  isLeftMouseDown = false;
+  isRightMouseDown = false;
+  if (continuousMiningInterval) {
+    clearInterval(continuousMiningInterval);
+    continuousMiningInterval = null;
+  }
+  if (continuousPlaceInterval) {
+    clearInterval(continuousPlaceInterval);
+    continuousPlaceInterval = null;
+  }
+  currentMiningBlockKey = null;
+  hideDigProgress();
+
   sendWS({ type: 'clear_movement' });
 
   if (wasMoving) {
@@ -1050,6 +1464,36 @@ export function clearAllControls(reason = 'unspecified') {
   // Also stop any ongoing digging & item use
   sendWS({ type: 'manual_action', action: 'dig_stop' });
   sendWS({ type: 'manual_action', action: 'use_item_stop' });
+}
+
+function showDigProgress(percent, label = '') {
+  if (!elements.gamemodeDigProgress && typeof document !== 'undefined' && typeof document.createElement === 'function') {
+    const parent = elements.gamemodeCrosshair?.parentElement || elements.gamemodeHudOverlay;
+    if (parent && typeof parent.appendChild === 'function') {
+      const el = document.createElement('div');
+      el.id = 'gamemodeDigProgress';
+      el.className = 'gamemode-dig-progress';
+      el.innerHTML = '<div class="dig-progress-bar"><div id="digProgressFill" class="dig-progress-fill" style="width:0%"></div></div><span id="digProgressText" class="dig-progress-text">0%</span>';
+      parent.appendChild(el);
+      elements.gamemodeDigProgress = el;
+      elements.digProgressFill = el.querySelector ? el.querySelector('#digProgressFill') : null;
+      elements.digProgressText = el.querySelector ? el.querySelector('#digProgressText') : null;
+    }
+  }
+  if (elements.gamemodeDigProgress && elements.gamemodeDigProgress.classList) {
+    elements.gamemodeDigProgress.classList.remove('hidden');
+    const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+    if (elements.digProgressFill) elements.digProgressFill.style.width = `${clamped}%`;
+    if (elements.digProgressText) elements.digProgressText.textContent = label ? `${label} (${clamped}%)` : `${clamped}%`;
+  }
+}
+
+function hideDigProgress() {
+  if (elements.gamemodeDigProgress && elements.gamemodeDigProgress.classList) {
+    elements.gamemodeDigProgress.classList.add('hidden');
+    if (elements.digProgressFill) elements.digProgressFill.style.width = '0%';
+    if (elements.digProgressText) elements.digProgressText.textContent = '0%';
+  }
 }
 
 /**
@@ -1094,23 +1538,111 @@ function flushLookDeltas() {
 
 function onMouseDown(e) {
   if (!isGamemodeActive) return;
+
   if (e.button === 0) {
     // Left-click: attack or start digging
-    sendWS({ type: 'manual_action', action: 'attack' });
-    sendWS({ type: 'manual_action', action: 'dig_start' });
+    isLeftMouseDown = true;
+    currentMiningStartTime = Date.now();
+    estimatedMiningDuration = (lastRaycastData && lastRaycastData.digTime) ? lastRaycastData.digTime : 800;
+    currentMiningBlockKey = (lastRaycastData && lastRaycastData.position)
+      ? `${lastRaycastData.position.x},${lastRaycastData.position.y},${lastRaycastData.position.z}`
+      : null;
+
+    sendWS({
+      type: 'manual_action',
+      action: 'attack',
+      targetEntityId: lastRaycastData?.type === 'entity' ? lastRaycastData.id : null
+    });
+    sendWS({
+      type: 'manual_action',
+      action: 'dig_start',
+      targetBlockPos: lastRaycastData?.position,
+      targetFace: lastRaycastData?.faceVector
+    });
+
+    // Start continuous mining loop (Minecraft style)
+    if (continuousMiningInterval) clearInterval(continuousMiningInterval);
+    continuousMiningInterval = setInterval(() => {
+      if (!isLeftMouseDown || !isGamemodeActive) {
+        clearInterval(continuousMiningInterval);
+        continuousMiningInterval = null;
+        hideDigProgress();
+        return;
+      }
+
+      if (lastRaycastData?.type === 'block' && lastRaycastData.position) {
+        const blockKey = `${lastRaycastData.position.x},${lastRaycastData.position.y},${lastRaycastData.position.z}`;
+        if (blockKey !== currentMiningBlockKey) {
+          // Changed target block while holding left click -> dig new block
+          currentMiningBlockKey = blockKey;
+          currentMiningStartTime = Date.now();
+          estimatedMiningDuration = lastRaycastData.digTime || 800;
+          sendWS({
+            type: 'manual_action',
+            action: 'dig_start',
+            targetBlockPos: lastRaycastData.position,
+            targetFace: lastRaycastData.faceVector
+          });
+        }
+
+        const elapsed = Date.now() - currentMiningStartTime;
+        const pct = Math.min(100, (elapsed / estimatedMiningDuration) * 100);
+        const name = lastRaycastData.displayName || lastRaycastData.name || 'Block';
+        showDigProgress(pct, `Abbau: ${name}`);
+      } else {
+        hideDigProgress();
+      }
+    }, 50);
+
   } else if (e.button === 2) {
     // Right-click: place block or use item (eating, drinking, bow, shield)
-    e.preventDefault();
-    sendWS({ type: 'manual_action', action: 'place' });
+    if (typeof e.preventDefault === 'function') e.preventDefault();
+    isRightMouseDown = true;
+
+    sendWS({
+      type: 'manual_action',
+      action: 'place',
+      targetBlockPos: lastRaycastData?.position,
+      targetFace: lastRaycastData?.faceVector
+    });
     sendWS({ type: 'manual_action', action: 'use_item_start' });
+
+    // Auto-repeat placement while holding right-click (Minecraft style)
+    if (continuousPlaceInterval) clearInterval(continuousPlaceInterval);
+    continuousPlaceInterval = setInterval(() => {
+      if (!isRightMouseDown || !isGamemodeActive) {
+        clearInterval(continuousPlaceInterval);
+        continuousPlaceInterval = null;
+        return;
+      }
+      sendWS({
+        type: 'manual_action',
+        action: 'place',
+        targetBlockPos: lastRaycastData?.position,
+        targetFace: lastRaycastData?.faceVector
+      });
+    }, 200);
   }
 }
 
 function onMouseUp(e) {
   if (!isGamemodeActive) return;
+
   if (e.button === 0) {
+    isLeftMouseDown = false;
+    if (continuousMiningInterval) {
+      clearInterval(continuousMiningInterval);
+      continuousMiningInterval = null;
+    }
+    currentMiningBlockKey = null;
+    hideDigProgress();
     sendWS({ type: 'manual_action', action: 'dig_stop' });
   } else if (e.button === 2) {
+    isRightMouseDown = false;
+    if (continuousPlaceInterval) {
+      clearInterval(continuousPlaceInterval);
+      continuousPlaceInterval = null;
+    }
     sendWS({ type: 'manual_action', action: 'use_item_stop' });
   }
 }
@@ -1216,7 +1748,18 @@ export function handleTelemetryUpdate(msg) {
 
   // 6. Raycast Inspection
   if (msg.raycast) {
+    lastRaycastData = msg.raycast;
     renderRaycast(msg.raycast);
+  }
+
+  // 7. Live Digging Telemetry Sync
+  if (msg.manualControl) {
+    if (msg.manualControl.isDigging && typeof msg.manualControl.digProgress === 'number') {
+      const pct = Math.round(msg.manualControl.digProgress * 100);
+      showDigProgress(pct, `Abbau: ${lastRaycastData?.displayName || lastRaycastData?.name || 'Block'}`);
+    } else if (!isLeftMouseDown) {
+      hideDigProgress();
+    }
   }
 }
 
@@ -1245,11 +1788,11 @@ function renderHearts(health) {
   const hasHalf = (health % 2) >= 1;
   for (let i = 0; i < 10; i++) {
     if (i < fullHearts) {
-      html += '<span class="heart-icon full" style="color:#ef4444">❤</span>';
+      html += '<span class="heart-icon full"><img class="mc-hud-icon" src="/img/mc/heart_full.png" alt="❤"></span>';
     } else if (i === fullHearts && hasHalf) {
-      html += '<span class="heart-icon half" style="color:#ef4444;opacity:0.7">❤</span>';
+      html += '<span class="heart-icon half"><img class="mc-hud-icon" src="/img/mc/heart_half.png" alt="❤"></span>';
     } else {
-      html += '<span class="heart-icon empty" style="color:#334155">🖤</span>';
+      html += '<span class="heart-icon empty"><img class="mc-hud-icon" src="/img/mc/heart_empty.png" alt="🖤"></span>';
     }
   }
   elements.hudHeartsContainer.innerHTML = html;
@@ -1262,11 +1805,11 @@ function renderFood(food) {
   const hasHalf = (food % 2) >= 1;
   for (let i = 0; i < 10; i++) {
     if (i < full) {
-      html += '<span class="food-icon full" style="color:#f59e0b">🍗</span>';
+      html += '<span class="food-icon full"><img class="mc-hud-icon" src="/img/mc/food_full.png" alt="🍗"></span>';
     } else if (i === full && hasHalf) {
-      html += '<span class="food-icon half" style="color:#f59e0b;opacity:0.7">🍗</span>';
+      html += '<span class="food-icon half"><img class="mc-hud-icon" src="/img/mc/food_half.png" alt="🍗"></span>';
     } else {
-      html += '<span class="food-icon empty" style="color:#334155">🍗</span>';
+      html += '<span class="food-icon empty"><img class="mc-hud-icon" src="/img/mc/food_empty.png" alt="🍗"></span>';
     }
   }
   elements.hudFoodContainer.innerHTML = html;
@@ -1280,102 +1823,46 @@ function renderHotbar(hotbar, activeSlot) {
     const item = hotbar[i];
     slotEl.classList.toggle('active', i === activeSlot);
 
-    const iconEl = slotEl.querySelector('.slot-icon');
-    const countEl = slotEl.querySelector('.slot-count');
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      renderItemSlotContent(slotEl, item, null);
+    } else {
+      const iconEl = slotEl.querySelector ? slotEl.querySelector('.slot-icon') : null;
+      const countEl = slotEl.querySelector ? slotEl.querySelector('.slot-count') : null;
+      if (item && item.name) {
+        if (iconEl) iconEl.textContent = getItemIcon(item.name);
+        if (countEl) countEl.textContent = item.count > 1 ? String(item.count) : '';
+      } else {
+        if (iconEl) iconEl.textContent = '';
+        if (countEl) countEl.textContent = '';
+      }
+    }
 
     if (item && item.name) {
-      if (iconEl) iconEl.textContent = getItemIcon(item.name);
-      if (countEl) countEl.textContent = item.count > 1 ? String(item.count) : '';
       slotEl.title = item.displayName || item.name;
     } else {
-      if (iconEl) iconEl.textContent = '';
-      if (countEl) countEl.textContent = '';
       slotEl.title = 'Leer';
+    }
+  }
+
+  // Update selection frame position
+  if (elements.hotbarSelectionFrame) {
+    elements.hotbarSelectionFrame.style.left = `${activeSlot * 20}px`;
+  }
+
+  // Update HUD offhand slot
+  if (elements.hudOffhandSlot) {
+    const offhandItem = lastFullInventory ? lastFullInventory.offhand : null;
+    if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      renderItemSlotContent(elements.hudOffhandSlot, offhandItem, '/img/mc/empty_armor_slot_shield.png');
     }
   }
 }
 
-/**
- * Universal Item Icon Map matching standard Minecraft items.
- */
-export function getItemIcon(name) {
-  if (!name) return '';
-  const lower = name.toLowerCase();
-
-  // Weapons & Tools
-  if (lower.includes('sword')) return '⚔️';
-  if (lower.includes('bow')) return '🏹';
-  if (lower.includes('arrow')) return '🎯';
-  if (lower.includes('shield')) return '🛡️';
-  if (lower.includes('trident')) return '🔱';
-  if (lower.includes('pickaxe')) return '⛏️';
-  if (lower.includes('axe')) return '🪓';
-  if (lower.includes('shovel')) return '🥄';
-  if (lower.includes('hoe')) return '🧑‍🌾';
-  if (lower.includes('shears')) return '✂️';
-  if (lower.includes('fishing_rod')) return '🎣';
-  if (lower.includes('flint_and_steel')) return '🔥';
-
-  // Armor
-  if (lower.includes('helmet') || lower.includes('cap')) return '🪖';
-  if (lower.includes('chestplate') || lower.includes('tunic')) return '🥋';
-  if (lower.includes('leggings') || lower.includes('pants')) return '👖';
-  if (lower.includes('boots')) return '👢';
-  if (lower.includes('elytra')) return '🪽';
-
-  // Food & Potions
-  if (lower.includes('golden_apple')) return '🍏';
-  if (lower.includes('apple')) return '🍎';
-  if (lower.includes('bread')) return '🍞';
-  if (lower.includes('beef') || lower.includes('pork') || lower.includes('mutton') || lower.includes('chicken')) return '🍖';
-  if (lower.includes('fish') || lower.includes('salmon') || lower.includes('cod')) return '🐟';
-  if (lower.includes('carrot')) return '🥕';
-  if (lower.includes('potato')) return '🥔';
-  if (lower.includes('melon')) return '🍉';
-  if (lower.includes('potion') || lower.includes('bottle')) return '🧪';
-
-  // Ores & Minerals
-  if (lower.includes('diamond')) return '💎';
-  if (lower.includes('emerald')) return '🟢';
-  if (lower.includes('iron_ingot')) return '🪙';
-  if (lower.includes('gold_ingot')) return '🧈';
-  if (lower.includes('netherite')) return '⬛';
-  if (lower.includes('coal') || lower.includes('charcoal')) return '🪨';
-  if (lower.includes('redstone')) return '🔴';
-  if (lower.includes('lapis')) return '🔷';
-  if (lower.includes('quartz')) return '⚪';
-  if (lower.includes('copper')) return '🟫';
-
-  // Utility & Misc
-  if (lower.includes('torch')) return '🕯️';
-  if (lower.includes('lantern')) return '🏮';
-  if (lower.includes('bed')) return '🛏️';
-  if (lower.includes('chest') || lower.includes('barrel') || lower.includes('shulker')) return '📦';
-  if (lower.includes('crafting_table')) return '🪚';
-  if (lower.includes('furnace')) return '♨️';
-  if (lower.includes('anvil')) return '🔨';
-  if (lower.includes('door') || lower.includes('trapdoor')) return '🚪';
-  if (lower.includes('glass')) return '🪟';
-  if (lower.includes('bucket')) return '🪣';
-  if (lower.includes('water')) return '💧';
-  if (lower.includes('lava')) return '🔥';
-  if (lower.includes('tnt')) return '🧨';
-  if (lower.includes('book')) return '📖';
-  if (lower.includes('stick')) return '🥢';
-  if (lower.includes('string')) return '🧵';
-  if (lower.includes('feather')) return '🪶';
-  if (lower.includes('bone')) return '🦴';
-
-  // Blocks
-  if (lower.includes('log') || lower.includes('plank') || lower.includes('wood')) return '🪵';
-  if (lower.includes('cobble') || lower.includes('stone') || lower.includes('brick') || lower.includes('deepslate')) return '🧱';
-  if (lower.includes('dirt') || lower.includes('grass')) return '🟫';
-  if (lower.includes('sand')) return '🟨';
-
-  return '📦';
-}
+import { getItemIcon } from './gamemode/itemIcons.js';
+export { getItemIcon };
 
 function renderRaycast(raycast) {
+  lastRaycastData = raycast;
   if (!elements.gamemodeRaycastTooltip) return;
   if (!raycast || raycast.type === 'none') {
     elements.gamemodeRaycastTooltip.classList.add('hidden');
@@ -1392,7 +1879,8 @@ function renderRaycast(raycast) {
     elements.raycastTargetDistance.textContent = `${dist}m`;
   }
   if (elements.raycastTargetCoords && raycast.position) {
-    elements.raycastTargetCoords.textContent = `X: ${raycast.position.x} Y: ${raycast.position.y} Z: ${raycast.position.z}`;
+    const faceText = raycast.face !== undefined && raycast.face !== null ? ` [Face: ${raycast.face}]` : '';
+    elements.raycastTargetCoords.textContent = `X: ${raycast.position.x} Y: ${raycast.position.y} Z: ${raycast.position.z}${faceText}`;
   }
 }
 

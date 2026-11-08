@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import { isMaskedPlaceholder } from '../../ai/endpointManager.js';
 import { llmRouter } from '../../ai/llmRouter.js';
+import { createRateLimiter } from '../../utils/rateLimiter.js';
 
 /**
  * Registers Model and LLM Endpoints BFF REST API routes.
@@ -12,6 +13,7 @@ import { llmRouter } from '../../ai/llmRouter.js';
  * @param {Object} context - Server coordinator context (ensureServices, endpointManager, safeProbeWorker, localModelScanner, deviceFlowManager, llmRouter)
  */
 export function registerModelApiRoutes(app, context) {
+  const probeLimiter = createRateLimiter({ windowMs: 60000, max: 60 });
   // 1. GET /api/endpoints (List all masked)
   app.get('/api/endpoints', async (req, res) => {
     try {
@@ -31,7 +33,7 @@ export function registerModelApiRoutes(app, context) {
   });
 
   // 1b. GET /api/endpoints/discover-local (Multi-Port Sweep for local inference engines - MUST be before :id)
-  app.get('/api/endpoints/discover-local', async (req, res) => {
+  app.get('/api/endpoints/discover-local', probeLimiter, async (req, res) => {
     try {
       await context.ensureServices();
       const timeoutMs = req.query.timeout ? parseInt(req.query.timeout, 10) : undefined;
@@ -130,7 +132,7 @@ export function registerModelApiRoutes(app, context) {
   });
 
   // 6. POST /api/endpoints/:id/test (Run Two-Tier Safe Probe on saved endpoint)
-  app.post('/api/endpoints/:id/test', async (req, res) => {
+  app.post('/api/endpoints/:id/test', probeLimiter, async (req, res) => {
     try {
       await context.ensureServices();
       const ep = context.endpointManager.getEndpoint(req.params.id);
@@ -156,7 +158,7 @@ export function registerModelApiRoutes(app, context) {
   });
 
   // 7. POST /api/endpoints/test-adhoc (Run Two-Tier Safe Probe on unsaved configuration)
-  app.post('/api/endpoints/test-adhoc', async (req, res) => {
+  app.post('/api/endpoints/test-adhoc', probeLimiter, async (req, res) => {
     try {
       await context.ensureServices();
       const body = req.body || {};
@@ -187,7 +189,7 @@ export function registerModelApiRoutes(app, context) {
   });
 
   // 9. POST /api/auth/device-flow/start (Start GitHub RFC 8628 Device Flow)
-  app.post('/api/auth/device-flow/start', async (req, res) => {
+  app.post('/api/auth/device-flow/start', probeLimiter, async (req, res) => {
     try {
       await context.ensureServices();
       const session = await context.deviceFlowManager.startDeviceFlow(req.body || {});

@@ -155,6 +155,10 @@ export class ThreatManager {
     if (manualController.isActive()) return;
     logger.warn(`[ThreatManager] Bot wurde getroffen! HP: ${this.bot?.health}/20.`);
 
+    // Sofort Rüstung und Schild überprüfen & anlegen
+    await inventoryManager.equipBestArmor(this.bot);
+    await inventoryManager.equipShield(this.bot);
+
     // Bei kritischer Gesundheit sofort Rückzug
     const criticalHealth = settings.SURVIVAL_CRITICAL_HEALTH || 8;
     if (this.bot && this.bot.health <= criticalHealth) {
@@ -246,7 +250,8 @@ export class ThreatManager {
     this.currentTarget = threat;
     this.backpedalUntil = 0;
 
-    // Waffen & Schild ausrüsten
+    // Waffen, Rüstung & Schild ausrüsten
+    await inventoryManager.equipBestArmor(this.bot);
     await inventoryManager.equipBestWeapon(this.bot);
     await inventoryManager.equipShield(this.bot);
   }

@@ -19,6 +19,22 @@ export const WEAPON_TIERS = [
   'wooden_axe'
 ];
 
+export const ARMOR_TIERS = {
+  netherite: 6,
+  diamond: 5,
+  iron: 4,
+  golden: 3,
+  chainmail: 2,
+  leather: 1
+};
+
+export const ARMOR_SLOT_MAP = [
+  { dest: 'head', pattern: '_helmet', name: 'Helm' },
+  { dest: 'torso', pattern: '_chestplate', name: 'Brustpanzer' },
+  { dest: 'legs', pattern: '_leggings', name: 'Hose' },
+  { dest: 'feet', pattern: '_boots', name: 'Stiefel' }
+];
+
 export const EDIBLE_FOODS = [
   'golden_carrot',
   'cooked_beef',
@@ -298,6 +314,66 @@ export class InventoryManager {
       }
     }
     return false;
+  }
+
+  /**
+   * Prüft, ob der Bot Hunger hat oder Heilung benötigt, und isst automatisch.
+   * @param {Object} bot Mineflayer bot
+   * @param {number} minFoodLevel Schwellenwert für Hunger (Default: 14)
+   * @returns {Promise<boolean>}
+   */
+  async autoEatCheck(bot, minFoodLevel = 14) {
+    if (!bot || !bot.inventory) return false;
+    const food = bot.food ?? 20;
+    const health = bot.health ?? 20;
+
+    // Essen wenn Hunger unter Schwellenwert (<= 14) oder wenn Gesundheit nicht voll und Hunger < 20
+    if (food <= minFoodLevel || (health < 20 && food < 20)) {
+      return await this.eatBestFood(bot);
+    }
+    return false;
+  }
+
+  /**
+   * Rüstet die beste verfügbare Rüstung (Helm, Brustpanzer, Hose, Stiefel) aus.
+   * @param {Object} bot Mineflayer bot
+   * @returns {Promise<{ equippedCount: number, slots: Object }>}
+   */
+  async equipBestArmor(bot) {
+    if (!bot || !bot.inventory || typeof bot.equip !== 'function') {
+      return { equippedCount: 0, slots: {} };
+    }
+
+    const items = typeof bot.inventory.items === 'function' ? bot.inventory.items() : [];
+    let equippedCount = 0;
+    const equippedSummary = {};
+
+    const getArmorScore = (itemName) => {
+      if (!itemName) return 0;
+      for (const [tier, score] of Object.entries(ARMOR_TIERS)) {
+        if (itemName.includes(tier)) return score;
+      }
+      return 1;
+    };
+
+    for (const slotDef of ARMOR_SLOT_MAP) {
+      const candidates = items.filter(i => i && i.name && (i.name.includes(slotDef.pattern) || i.name.endsWith(slotDef.pattern)));
+      if (candidates.length === 0) continue;
+
+      candidates.sort((a, b) => getArmorScore(b.name) - getArmorScore(a.name));
+      const bestCandidate = candidates[0];
+
+      try {
+        await bot.equip(bestCandidate, slotDef.dest);
+        equippedCount++;
+        equippedSummary[slotDef.dest] = bestCandidate.name;
+        logger.info(`[InventoryManager] ${slotDef.name} '${bestCandidate.name}' ausgerüstet.`);
+      } catch (err) {
+        logger.debug(`[InventoryManager] Konnte '${bestCandidate.name}' nicht als ${slotDef.dest} ausrüsten: ${err.message}`);
+      }
+    }
+
+    return { equippedCount, slots: equippedSummary };
   }
 }
 

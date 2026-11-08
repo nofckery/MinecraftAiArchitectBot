@@ -3,6 +3,11 @@ import { Vec3 } from 'vec3';
 import { logger } from '../utils/logger.js';
 import { worldExecutor } from '../builder/worldExecutor.js';
 import { threatManager, THREAT_STATES } from './threatManager.js';
+import { serverRights } from './serverRights.js';
+import { resolveFaceVector, raycastTargetBlock, inspectTarget } from './manual/manualRaycastHelper.js';
+import { formatInventoryItem, getHotbarInfo, getFullInventory } from './manual/manualInventorySerializer.js';
+
+export { resolveFaceVector, raycastTargetBlock, inspectTarget, formatInventoryItem, getHotbarInfo, getFullInventory };
 
 export const CONTROL_NAMES = [
   'forward',
@@ -43,7 +48,48 @@ export class ManualController extends EventEmitter {
     };
     this.isDigging = false;
     this.currentDigBlock = null;
+    this.digStartTime = null;
+    this.digTotalTime = null;
     this.pitchLimit = Math.PI / 2 - 0.001; // ~89.94 degrees (~1.5698 rad)
+  }
+
+  getDigProgress() {
+    if (!this.isDigging || !this.digStartTime || !this.digTotalTime || this.digTotalTime <= 0) return 0;
+    const elapsed = Date.now() - this.digStartTime;
+    return Math.min(1.0, Math.max(0, elapsed / this.digTotalTime));
+  }
+
+  canUseOpCommand() {
+    if (!this.bot) return false;
+    if (this.bot.game?.gameMode === 'creative') return true;
+    try {
+      const rights = serverRights.getStatus(this.bot);
+      return Boolean(rights?.isOp);
+    } catch {
+      return false;
+    }
+  }
+
+  isPlacableItem(item) {
+    if (!item || !item.name) return false;
+    const registry = this.bot?.registry;
+    if (registry?.blocksByName && registry.blocksByName[item.name]) return true;
+    const placablePatterns = [
+      '_planks', '_log', '_wood', '_stone', '_bricks', '_slab', '_stairs',
+      '_wall', '_fence', '_glass', '_wool', '_concrete', '_terracotta',
+      '_door', '_trapdoor', 'torch', 'dirt', 'sand', 'gravel', 'cobblestone',
+      'deepslate', 'obsidian', 'bedrock', 'scaffolding', 'chest', 'barrel',
+      'crafting_table', 'furnace', 'anvil', 'ladder', 'lever', '_button'
+    ];
+    return placablePatterns.some(p => item.name.includes(p));
+  }
+
+  isUsableItem(item) {
+    if (!item || !item.name) return false;
+    const registry = this.bot?.registry;
+    if (registry?.foodsByName && registry.foodsByName[item.name]) return true;
+    const usablePatterns = ['potion', 'bottle', 'bow', 'crossbow', 'shield', 'spyglass', 'apple', 'bread', 'beef', 'pork', 'chicken', 'mutton', 'carrot', 'potato', 'cookie', 'melon_slice'];
+    return usablePatterns.some(p => item.name.includes(p));
   }
 
   setBot(bot) {
@@ -254,7 +300,7 @@ export class ManualController extends EventEmitter {
     return { success: true, action: 'swing_arm' };
   }
 
-  startDigging(targetBlock = null) {
+  startDigging(targetBlock = null, targetFace = null) {
     if (!this.isActive()) return false;
     const block = targetBlock || this.inspectTargetBlock(4.5);
     if (!block) return false;
@@ -273,19 +319,38 @@ export class ManualController extends EventEmitter {
     this.stopDigging();
     this.isDigging = true;
     this.currentDigBlock = block;
+    this.digStartTime = Date.now();
+    this.digTotalTime = (this.bot && typeof this.bot.digTime === 'function') ? this.bot.digTime(block) : 500;
+
+    const digFace = targetFace || (block.face !== undefined ? this.resolveFaceVector(block.face) : 'auto');
+    const isCreative = Boolean(this.bot?.game?.gameMode === 'creative' || this.digTotalTime === 0);
 
     if (typeof this.bot.dig === 'function') {
-      const digPromise = this.bot.dig(block, false);
+      const digPromise = this.bot.dig(block, 'ignore', digFace);
       if (digPromise && typeof digPromise.then === 'function') {
         digPromise.then(() => {
           this.isDigging = false;
           this.currentDigBlock = null;
-        }).catch(() => {
+          this.digStartTime = null;
+          this.digTotalTime = null;
+          this.emit('dig_finished', { block });
+        }).catch((err) => {
+          logger.debug(`[ManualController] Digging beendet/abgebrochen: ${err?.message}`);
           this.isDigging = false;
           this.currentDigBlock = null;
+          this.digStartTime = null;
+          this.digTotalTime = null;
         });
       }
     }
+
+    // Creative / OP mode instant break fallback
+    if (isCreative && this.canUseOpCommand() && block.position) {
+      try {
+        this.bot.chat(`/setblock ${Math.floor(block.position.x)} ${Math.floor(block.position.y)} ${Math.floor(block.position.z)} air`);
+      } catch {}
+    }
+
     return true;
   }
 
@@ -299,6 +364,8 @@ export class ManualController extends EventEmitter {
     }
     this.isDigging = false;
     this.currentDigBlock = null;
+    this.digStartTime = null;
+    this.digTotalTime = null;
     return true;
   }
 
@@ -320,13 +387,47 @@ export class ManualController extends EventEmitter {
     }
 
     // 2. Blockplatzierung gegen Referenzblock
-    if (block && typeof this.bot.placeBlock === 'function') {
-      const face = faceVector || this.resolveFaceVector(block.face);
-      try {
-        await this.bot.placeBlock(block, face);
-        return { success: true, action: 'place_block', against: block.name };
-      } catch (placeErr) {
-        logger.debug(`[ManualController] placeBlock Fehler: ${placeErr.message}`);
+    if (block && (typeof this.bot.placeBlock === 'function' || typeof this.bot._placeBlockWithOptions === 'function')) {
+      const face = faceVector
+        ? (faceVector instanceof Vec3 ? faceVector : new Vec3(faceVector.x, faceVector.y, faceVector.z))
+        : (block.face !== undefined ? this.resolveFaceVector(block.face) : new Vec3(0, 1, 0));
+
+      const held = this.bot.heldItem;
+      const isUsable = this.isUsableItem(held);
+
+      // Nur versuchen, wenn gehaltenes Item kein reines Verbrauchs-Item (z.B. Brot/Bogen) ist
+      if (!isUsable) {
+        const dest = block.position
+          ? (typeof block.position.plus === 'function'
+              ? block.position.plus(face)
+              : new Vec3(block.position.x + face.x, block.position.y + face.y, block.position.z + face.z))
+          : null;
+
+        try {
+          if (typeof this.bot._placeBlockWithOptions === 'function') {
+            const placePromise = this.bot._placeBlockWithOptions(block, face, {
+              swingArm: 'right',
+              forceLook: 'ignore'
+            });
+            await Promise.race([
+              placePromise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Placement timeout')), 1500))
+            ]);
+          } else if (typeof this.bot.placeBlock === 'function') {
+            await this.bot.placeBlock(block, face);
+          }
+          return { success: true, action: 'place_block', against: block.name, dest };
+        } catch (placeErr) {
+          logger.debug(`[ManualController] placeBlock Fehler: ${placeErr.message}`);
+
+          // OP / Creative Fallback via /setblock
+          if (dest && this.canUseOpCommand() && held?.name) {
+            try {
+              this.bot.chat(`/setblock ${Math.floor(dest.x)} ${Math.floor(dest.y)} ${Math.floor(dest.z)} ${held.name}`);
+              return { success: true, action: 'place_block', against: block.name, dest, method: 'setblock_fallback' };
+            } catch {}
+          }
+        }
       }
     }
 
@@ -419,145 +520,24 @@ export class ManualController extends EventEmitter {
 
   // --- HUD & Telemetry Helpers ---
 
+  raycastTargetBlock(maxDistance = 4.5) {
+    return raycastTargetBlock(this.bot, maxDistance);
+  }
+
   inspectTarget(maxDistance = 4.5) {
-    if (!this.bot || !this.bot.entity) return null;
-
-    if (typeof this.bot.entityAtCursor === 'function') {
-      const ent = this.bot.entityAtCursor(3.5);
-      if (ent) {
-        const dist = this.bot.entity.position && ent.position
-          ? Number(this.bot.entity.position.distanceTo(ent.position).toFixed(2))
-          : null;
-        return {
-          kind: 'entity',
-          name: ent.name || ent.username || 'Unbekannt',
-          id: ent.id,
-          distance: dist,
-          health: ent.health ?? null
-        };
-      }
-    }
-
-    const block = this.inspectTargetBlock(maxDistance);
-    if (block) {
-      const dist = this.bot.entity.position && block.position
-        ? Number(this.bot.entity.position.distanceTo(block.position).toFixed(2))
-        : null;
-      return {
-        kind: 'block',
-        name: block.name,
-        displayName: block.displayName || block.name,
-        position: block.position ? { x: block.position.x, y: block.position.y, z: block.position.z } : null,
-        distance: dist,
-        hardness: block.hardness ?? 1
-      };
-    }
-
-    return null;
+    return inspectTarget(this.bot, maxDistance);
   }
 
   inspectTargetBlock(maxDistance = 4.5) {
-    if (!this.bot || typeof this.bot.blockAtCursor !== 'function') return null;
-    try {
-      return this.bot.blockAtCursor(maxDistance);
-    } catch {
-      return null;
-    }
+    return this.raycastTargetBlock(maxDistance);
   }
 
   getHotbarInfo() {
-    if (!this.bot || !this.bot.inventory) return [];
-    const selectedSlot = this.bot.quickBarSlot ?? 0;
-    const hotbar = [];
-    const slots = this.bot.inventory.slots || {};
-
-    // Quickbar liegt in Mineflayer-Slots 36 bis 44
-    for (let i = 0; i < 9; i++) {
-      const item = slots[36 + i];
-      hotbar.push({
-        slot: i,
-        selected: i === selectedSlot,
-        item: item ? {
-          name: item.name,
-          displayName: item.displayName || item.name,
-          count: item.count,
-          type: item.type
-        } : null
-      });
-    }
-    return hotbar;
+    return getHotbarInfo(this.bot);
   }
 
   getFullInventory() {
-    if (!this.bot || !this.bot.inventory) return null;
-    const inv = this.bot.inventory;
-    const slots = inv.slots || {};
-
-    const formatItem = (item, slotIndex) => {
-      if (!item) return null;
-      return {
-        slot: slotIndex,
-        name: item.name,
-        displayName: item.displayName || item.name,
-        count: item.count,
-        type: item.type,
-        durabilityUsed: item.durabilityUsed || 0,
-        maxDurability: item.maxDurability || 0
-      };
-    };
-
-    // Armor-Slots: 5: Helm, 6: Brustpanzer, 7: Hose, 8: Stiefel
-    const armor = {
-      head: formatItem(slots[5], 5),
-      torso: formatItem(slots[6], 6),
-      legs: formatItem(slots[7], 7),
-      feet: formatItem(slots[8], 8)
-    };
-
-    // Zweithand (Off-hand): Slot 45
-    const offhand = formatItem(slots[45], 45);
-
-    // Hauptinventar: Slots 9..35 (3 Zeilen à 9 Slots = 27 Slots)
-    const main = [];
-    for (let i = 9; i <= 35; i++) {
-      main.push(formatItem(slots[i], i));
-    }
-
-    // Hotbar: Slots 36..44 (9 Slots)
-    const hotbar = [];
-    for (let i = 36; i <= 44; i++) {
-      hotbar.push(formatItem(slots[i], i));
-    }
-
-    // Am Mauszeiger schwebendes Item (Selected / Held by cursor)
-    const selectedItem = inv.selectedItem ? formatItem(inv.selectedItem, -1) : null;
-
-    // Aktiver Behälter (Truhe, Werkbank, Ofen, etc.), falls geöffnet
-    let container = null;
-    const curWin = this.bot.currentWindow;
-    if (curWin && curWin.id !== 0) {
-      const containerSlots = [];
-      const end = curWin.inventoryStart || 0;
-      for (let i = 0; i < end; i++) {
-        containerSlots.push(formatItem(curWin.slots[i], i));
-      }
-      container = {
-        id: curWin.id,
-        type: curWin.type,
-        title: curWin.title || 'Container',
-        slots: containerSlots
-      };
-    }
-
-    return {
-      armor,
-      offhand,
-      main,
-      hotbar,
-      selectedItem,
-      container,
-      quickBarSlot: this.bot.quickBarSlot ?? 0
-    };
+    return getFullInventory(this.bot);
   }
 
   isInteractableBlock(name) {
@@ -567,16 +547,7 @@ export class ManualController extends EventEmitter {
   }
 
   resolveFaceVector(face) {
-    if (face instanceof Vec3) return face;
-    switch (face) {
-      case 0: return new Vec3(0, -1, 0); // Bottom
-      case 1: return new Vec3(0, 1, 0);  // Top
-      case 2: return new Vec3(0, 0, -1); // North
-      case 3: return new Vec3(0, 0, 1);  // South
-      case 4: return new Vec3(-1, 0, 0); // West
-      case 5: return new Vec3(1, 0, 0);  // East
-      default: return new Vec3(0, 1, 0);
-    }
+    return resolveFaceVector(face);
   }
 }
 

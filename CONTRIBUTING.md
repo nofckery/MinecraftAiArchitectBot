@@ -67,7 +67,7 @@ The project is structured into modular layers designed for strict separation of 
 | `src/survival/` | **Survival Subsystem** | Chest Manager (32m container scanning & capacity-checked withdrawal), Material Procurement, Scaffold Manager (dynamic placement & cleanup of scaffolding for high-rise builds), Harvest Manager. |
 | `src/web/` | **Mission Control Cockpit** | Express + WebSocket server (`dashboardServer.js`), Three.js 3D CAD Editor, 2D Topological Map, Manual Cockpit, Model Cockpit, Area Map, Multi-Monitor Popout Viewer. |
 | `src/world/` | **Perception Layer** | World Scanner (bounding-box detection via wool markers, terrain relief analysis), Undo Manager (`undoManager.js` rollback logging). |
-| `test/` | **Verification Suite** | 22 standardized offline test suites covering 775 assertions across all modules (100% PASS). |
+| `test/` | **Verification Suite** | 24 standardized offline test suites covering 841 assertions across all modules (100% PASS). |
 
 ---
 
@@ -112,7 +112,7 @@ All contributions must maintain our high bar of software quality:
 
 Available test commands:
 ```bash
-npm test                      # Run all 22 standard test suites (775 tests)
+npm test                      # Run all 24 standard test suites (841 tests)
 npm run test:dry              # Geometry, procedural synthesis, and LLM router tests
 npm run test:mission          # Mission Control WebSocket, CAD, and Session Handoff tests
 npm run test:milestone1       # Chest logistics & Minecraft 26.3 compatibility tests

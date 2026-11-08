@@ -31,51 +31,10 @@ import { registerSchematicRoutes } from './routes/schematicRoutes.js';
 import { registerModelApiRoutes } from './routes/modelRoutes.js';
 import { handleClientWsMessage } from './ws/dashboardWsDispatcher.js';
 import { manualController } from '../bot/manualController.js';
+import { sanitizeViewerEntity, SUPPORTED_VIEWER_ENTITIES } from './services/viewerEntitySanitizer.js';
+import { buildBotTelemetry } from './services/dashboardTelemetryService.js';
 
-const SUPPORTED_VIEWER_ENTITIES = new Set([
-  'armor_stand', 'arrow', 'bat', 'bee', 'blaze', 'boat', 'cat', 'cave_spider', 'chest_minecart',
-  'chicken', 'cod', 'command_block_minecart', 'cow', 'creeper', 'dolphin', 'donkey', 'dragon_fireball',
-  'drowned', 'egg', 'elder_guardian', 'ender_dragon', 'ender_pearl', 'enderman', 'endermite',
-  'evoker', 'evoker_fangs', 'experience_bottle', 'experience_orb', 'eye_of_ender', 'fireball',
-  'firework_rocket', 'fishing_bobber', 'fox', 'ghast', 'guardian', 'hoglin', 'hopper_minecart',
-  'horse', 'husk', 'iron_golem', 'leash_knot', 'llama', 'llama_spit', 'magma_cube', 'minecart',
-  'mooshroom', 'mule', 'ocelot', 'panda', 'parrot', 'phantom', 'pig', 'piglin', 'piglin_brute',
-  'pillager', 'player', 'polar_bear', 'potion', 'pufferfish', 'rabbit', 'ravager', 'salmon',
-  'sheep', 'shulker', 'shulker_bullet', 'silverfish', 'skeleton', 'skeleton_horse', 'slime',
-  'small_fireball', 'snow_golem', 'snowball', 'spider', 'squid', 'stray', 'strider', 'tnt_minecart',
-  'trident', 'tropical_fish', 'turtle', 'vex', 'villager', 'vindicator', 'wandering_trader',
-  'witch', 'wither', 'wither_skeleton', 'wither_skull', 'wolf', 'zoglin', 'zombie', 'zombie_horse',
-  'zombie_villager', 'zombified_piglin'
-]);
-
-function sanitizeViewerEntity(entity) {
-  if (!entity) return entity;
-  const name = entity.name;
-  if (!name || typeof name !== 'string') return entity;
-
-  if (SUPPORTED_VIEWER_ENTITIES.has(name)) return entity;
-
-  // Map variants to existing models where possible
-  let mapped = null;
-  if (name.includes('boat') || name.includes('raft')) mapped = 'boat';
-  else if (name.includes('squid')) mapped = 'squid';
-  else if (name.includes('ghast')) mapped = 'ghast';
-  else if (name.includes('zombie')) mapped = 'zombie';
-  else if (name.includes('skeleton')) mapped = 'skeleton';
-  else if (name.includes('spider')) mapped = 'spider';
-  else if (name.includes('minecart')) mapped = 'minecart';
-  else if (name.includes('horse')) mapped = 'horse';
-
-  const finalName = mapped && SUPPORTED_VIEWER_ENTITIES.has(mapped) ? mapped : undefined;
-
-  return new Proxy(entity, {
-    get(target, prop, receiver) {
-      if (prop === 'name') return finalName;
-      const val = Reflect.get(target, prop, receiver);
-      return typeof val === 'function' ? val.bind(target) : val;
-    }
-  });
-}
+export { sanitizeViewerEntity, SUPPORTED_VIEWER_ENTITIES };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -231,15 +190,59 @@ export class DashboardServer {
     this.app.use('/api', (req, res, next) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-dashboard-token');
       res.setHeader('Access-Control-Allow-Private-Network', 'true');
       if (req.method === 'OPTIONS') return res.sendStatus(204);
       next();
     });
 
+    // 1b. Dashboard Password Protection (if configured in settings)
+    if (settings.DASHBOARD_PASSWORD && settings.DASHBOARD_PASSWORD.length > 0) {
+      this.app.use('/api', (req, res, next) => {
+        if (req.path === '/auth/status' || req.path === '/auth/login') {
+          return next();
+        }
+        const authHeader = req.headers.authorization || '';
+        const token = req.headers['x-dashboard-token'] ||
+          (authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null) ||
+          req.query?.token ||
+          req.query?.auth;
+
+        if (token === settings.DASHBOARD_PASSWORD) {
+          return next();
+        }
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Gültiges Dashboard-Passwort erforderlich.'
+        });
+      });
+    }
+
+    this.app.get('/api/auth/status', (req, res) => {
+      res.json({
+        passwordProtected: Boolean(settings.DASHBOARD_PASSWORD && settings.DASHBOARD_PASSWORD.length > 0)
+      });
+    });
+
+    this.app.post('/api/auth/login', (req, res) => {
+      const { password } = req.body || {};
+      if (!settings.DASHBOARD_PASSWORD || password === settings.DASHBOARD_PASSWORD) {
+        return res.json({ success: true, token: settings.DASHBOARD_PASSWORD || 'unprotected' });
+      }
+      return res.status(401).json({ success: false, error: 'Ungültiges Passwort' });
+    });
+
     this.app.use(express.json());
     const publicDir = path.join(__dirname, 'public');
     this.app.use(express.static(publicDir));
+    const texturesDir = path.resolve(__dirname, '../../node_modules/prismarine-viewer/public/textures');
+    this.app.use('/textures', express.static(texturesDir));
+
+    this.app.get('/api/inventory/textures', (req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.sendFile(path.join(__dirname, 'public/img/mc/item_textures.json'));
+    });
+
     const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
     // Initialize backend services in background
@@ -275,7 +278,26 @@ export class DashboardServer {
     this.httpServer = http.createServer(this.app);
     this.wss = new WebSocketServer({ server: this.httpServer });
 
-    this.wss.on('connection', (ws) => {
+    this.wss.on('connection', (ws, req) => {
+      if (settings.DASHBOARD_PASSWORD && settings.DASHBOARD_PASSWORD.length > 0) {
+        let isAuthorized = false;
+        try {
+          const urlObj = new URL(req?.url || '', 'http://localhost');
+          const token = urlObj.searchParams.get('token') ||
+            urlObj.searchParams.get('auth') ||
+            req?.headers?.['x-dashboard-token'];
+          isAuthorized = (token === settings.DASHBOARD_PASSWORD);
+        } catch {
+          isAuthorized = false;
+        }
+
+        if (!isAuthorized) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Unauthorized: Dashboard-Passwort ungültig' }));
+          ws.close(4001, 'Unauthorized');
+          return;
+        }
+      }
+
       logger.debug('Neuer Mission-Control Dashboard Client verbunden.');
 
       // 1. Initialen Status und Historie senden
@@ -532,111 +554,12 @@ export class DashboardServer {
   }
 
   sendTelemetry() {
-    const bot = this.currentBot;
-    if (bot && manualController.bot !== bot) {
-      manualController.setBot(bot);
-    }
-
-    const pos = bot?.entity?.position ? {
-      x: Math.round(bot.entity.position.x * 10) / 10,
-      y: Math.round(bot.entity.position.y * 10) / 10,
-      z: Math.round(bot.entity.position.z * 10) / 10
-    } : { x: 0, y: 0, z: 0 };
-
-    const yaw = bot?.entity?.yaw || 0;
-    const pitch = bot?.entity?.pitch || 0;
-    const health = bot?.health ?? 20;
-    const food = bot?.food ?? 20;
-    const mode = settings.BUILD_EXECUTION_MODE;
-    const effectiveMode = worldExecutor.resolveMode(settings.BUILD_EXECUTION_MODE, bot);
-    const rights = serverRights.getStatus(bot);
-    const buildProgress = worldExecutor.getProgress();
-    const llmProvider = (this.llmRouter || llmRouter).getActiveProviderName();
-
-    // 1. Hotbar (9 slots: 0..8)
-    const selectedSlot = bot?.quickBarSlot ?? 0;
-    const hotbar = [];
-    const slots = bot?.inventory?.slots;
-    const rawHotbar = (typeof manualController.getHotbarInfo === 'function') ? manualController.getHotbarInfo() : [];
-
-    for (let i = 0; i < 9; i++) {
-      const slotItem = slots ? slots[36 + i] : null;
-      const hotbarEntry = rawHotbar.find(h => h.slot === i);
-      const item = slotItem || hotbarEntry?.item || (hotbarEntry?.name ? hotbarEntry : null);
-      hotbar.push({
-        slot: i,
-        name: item ? (item.name ?? null) : null,
-        displayName: item ? (item.displayName || item.name || 'Empty') : 'Empty',
-        count: item ? (item.count ?? 0) : 0,
-        selected: i === selectedSlot,
-        durabilityUsed: item?.durabilityUsed ?? 0
-      });
-    }
-
-    // 2. Cursor raycast inspection data (target block or entity)
-    let raycast = {
-      type: 'none',
-      name: null,
-      displayName: null,
-      distance: null,
-      position: null
-    };
-
-    try {
-      const target = (typeof manualController.inspectTarget === 'function')
-        ? manualController.inspectTarget(4.5)
-        : null;
-
-      if (target) {
-        const targetType = (target.kind === 'entity' || target.type === 'entity') ? 'entity' : 'block';
-        raycast = {
-          type: targetType,
-          name: target.name || null,
-          displayName: target.displayName || target.name || (targetType === 'entity' ? 'Entity' : 'Block'),
-          distance: typeof target.distance === 'number' ? target.distance : null,
-          position: target.position || (target.id && bot?.entities?.[target.id]?.position ? {
-            x: Math.round(bot.entities[target.id].position.x * 10) / 10,
-            y: Math.round(bot.entities[target.id].position.y * 10) / 10,
-            z: Math.round(bot.entities[target.id].position.z * 10) / 10
-          } : null)
-        };
-      }
-    } catch (err) {
-      logger.debug(`[Telemetry] Raycast-Inspektionsfehler: ${err.message}`);
-    }
-
-    // 3. Manual control status
-    const manualControl = {
-      active: manualController.isActive(),
-      selectedSlot,
-      controls: manualController.getActiveControls()
-    };
-
-    // 4. Full player & container inventory data
-    const fullInventory = (typeof manualController.getFullInventory === 'function')
-      ? manualController.getFullInventory()
-      : null;
-
-    const telemetryMsg = {
-      type: 'bot_telemetry',
-      pos,
-      yaw,
-      pitch,
-      health,
-      food,
-      mode,
-      effectiveMode,
-      serverRights: rights,
-      buildProgress,
-      llmProvider,
-      status: sessionHandoff.state,
-      username: bot?.username || settings.MC_USERNAME || 'BaumeisterKI',
-      manualControl,
-      hotbar,
-      fullInventory,
-      raycast
-    };
-
+    const telemetryMsg = buildBotTelemetry({
+      bot: this.currentBot,
+      controller: manualController,
+      router: this.llmRouter || llmRouter,
+      executor: worldExecutor
+    });
     this.broadcast(telemetryMsg);
   }
 

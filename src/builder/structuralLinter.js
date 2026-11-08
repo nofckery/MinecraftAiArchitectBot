@@ -272,6 +272,20 @@ export class StructuralLinter {
       );
     }
 
+    // 4. Beleuchtungs- und Spawnschutz-Prüfung
+    let lightsCount = 0;
+    for (const [, b] of blockMap.entries()) {
+      const n = b.block.name;
+      if (n.includes('torch') || n.includes('lantern') || n === 'glowstone' || n.includes('lamp') || n.includes('froglight') || n.includes('shroomlight')) {
+        lightsCount++;
+      }
+    }
+    if (totalCount >= 30 && lightsCount === 0) {
+      warnings.push(
+        'LightingWarning: Keine Lichtquellen (Fackeln, Laternen, Lampen) gefunden! Unbeleuchtete Innenbereiche führen zu feindlichen Mob-Spawns.'
+      );
+    }
+
     // Zusätzliche Validierungsfehler aus dem Canvas übernehmen
     if (canvas.validationErrors && canvas.validationErrors.length > 0) {
       for (const err of canvas.validationErrors) {

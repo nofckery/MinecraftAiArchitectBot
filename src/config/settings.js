@@ -122,6 +122,7 @@ export const settings = {
   // Mission Control Web-UI & 1-Account Session-Handoff
   WEB_DASHBOARD_PORT: parseInteger(process.env.WEB_DASHBOARD_PORT, 3080),
   PRISMARINE_VIEWER_PORT: parseInteger(process.env.PRISMARINE_VIEWER_PORT, 3081),
+  DASHBOARD_PASSWORD: (process.env.DASHBOARD_PASSWORD || '').trim(),
   SINGLE_ACCOUNT_HANDOFF_MODE: parseBoolean(process.env.SINGLE_ACCOUNT_HANDOFF_MODE, true),
   SERVER_PING_INTERVAL_MS: parseInteger(process.env.SERVER_PING_INTERVAL_MS, 10000)
 };

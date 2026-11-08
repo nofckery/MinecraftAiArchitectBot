@@ -12,6 +12,8 @@ import { ThreatManager, threatManager } from './threatManager.js';
 import { SleepController, sleepController, SLEEP_STATES } from './sleepController.js';
 import { serverRights } from './serverRights.js';
 import { manualController } from './manualController.js';
+import { inventoryManager } from './inventoryManager.js';
+import { worldExecutor } from '../builder/worldExecutor.js';
 
 export class BotClient {
   constructor() {
@@ -19,6 +21,7 @@ export class BotClient {
     this.architectAgent = new ArchitectAgent();
     this.chatController = null;
     this.isReconnecting = false;
+    this.reconnectAttempts = 0;
     this.shouldRun = true;
     this.reconnectTimeout = null;
     this.threatManager = threatManager;
@@ -33,6 +36,7 @@ export class BotClient {
   start() {
     this.shouldRun = true;
     this.cancelReconnect();
+    this.reconnectAttempts = 0;
     if (this.bot) {
       try {
         this.bot.quit();
@@ -86,6 +90,7 @@ export class BotClient {
 
   reconnect() {
     this.cancelReconnect();
+    this.reconnectAttempts = 0;
     if (this.bot) {
       try {
         this.bot.quit();
@@ -200,14 +205,27 @@ export class BotClient {
     });
 
     bot.once('spawn', () => {
+      this.reconnectAttempts = 0;
       logger.build(`Bot '${bot.username}' erfolgreich auf dem Server gespawnt! (Position: ${bot.entity.position.floored()})`);
 
       try {
         const defaultMove = new Movements(bot);
+        // Bautenschutz: Verhindert, dass der Pathfinder Löcher in eigene/frisch gebaute Wände schlägt
+        defaultMove.canDig = false;
+        defaultMove.allowParkour = true;
+        defaultMove.allowSprinting = true;
         bot.pathfinder.setMovements(defaultMove);
       } catch (err) {
         logger.warn(`Konnte Standard-Pathfinder-Bewegungen nicht initialisieren: ${err.message}`);
       }
+
+      // Beste Rüstung & Nahrungsschutz sofort beim Spawnen aktivieren
+      inventoryManager.equipBestArmor(bot).catch(err => {
+        logger.debug(`[BotClient] Fehler beim initialen Rüstungs-Check: ${err.message}`);
+      });
+      inventoryManager.autoEatCheck(bot).catch(err => {
+        logger.debug(`[BotClient] Fehler beim initialen Hunger-Check: ${err.message}`);
+      });
 
       sessionHandoff.onBotSpawn(bot);
       dashboardServer.onBotSpawn(bot);
@@ -253,6 +271,65 @@ export class BotClient {
       }
     });
 
+    // Kontinuierliche Hunger- & Nahrungsüberwachung (Auto-Eat)
+    bot.on('health', async () => {
+      if (this.manualController?.isActive()) return;
+      if (bot.health > 0) {
+        await inventoryManager.autoEatCheck(bot);
+      }
+    });
+
+    // Umweltschutz: Anti-Ertrinken (Schwimm-Reflex) und Lava-Schutz
+    let isEnvironmentalSwimming = false;
+    bot.on('move', () => {
+      if (this.manualController?.isActive() || !bot.entity) return;
+
+      if (bot.entity.isInWater) {
+        if ((bot.oxygenLevel !== undefined && bot.oxygenLevel < 20) || (bot.entity.velocity && bot.entity.velocity.y < 0)) {
+          bot.setControlState('jump', true);
+          isEnvironmentalSwimming = true;
+        }
+      } else if (bot.entity.isInLava) {
+        logger.warn('[HAZARD] Bot befindet sich in Lava! Notfall-Sprung aktiv!');
+        bot.setControlState('jump', true);
+        bot.setControlState('sprint', true);
+        isEnvironmentalSwimming = true;
+      } else if (isEnvironmentalSwimming) {
+        bot.setControlState('jump', false);
+        bot.setControlState('sprint', false);
+        isEnvironmentalSwimming = false;
+      }
+    });
+
+    // Auto-Respawn & Notfall-Handling bei Tod
+    bot.on('death', () => {
+      const deathPos = bot.entity?.position ? bot.entity.position.floored() : 'unbekannt';
+      logger.error(`[DEATH] Der Bot ist bei Position ${deathPos} gestorben!`);
+      this.broadcastState('DEAD', true);
+      if (dashboardServer && typeof dashboardServer.broadcast === 'function') {
+        dashboardServer.broadcast({
+          type: 'bot_death',
+          position: deathPos,
+          message: `Bot bei ${deathPos} gestorben. Automatischer Respawn wird eingeleitet...`
+        });
+      }
+
+      // Aktiven Bauauftrag sichern und pausieren
+      worldExecutor.pauseBuild();
+
+      // Automatischer Respawn nach 1.500 ms
+      setTimeout(() => {
+        if (this.bot && typeof this.bot.respawn === 'function') {
+          try {
+            logger.info('[BotClient] Führe automatischen Respawn aus...');
+            this.bot.respawn();
+          } catch (respawnErr) {
+            logger.warn(`[BotClient] Fehler beim automatischen Respawn: ${respawnErr.message}`);
+          }
+        }
+      }, 1500);
+    });
+
     bot.on('kicked', (reason) => {
       this.manualController?.deactivate();
       const reasonStr = typeof reason === 'object' ? JSON.stringify(reason) : String(reason);
@@ -268,6 +345,17 @@ export class BotClient {
 
     bot.on('error', (err) => {
       logger.error(`Mineflayer-Fehler: ${err.message}`);
+
+      if (err.message && err.message.includes('Failed to obtain profile data')) {
+        logger.warn('[BotClient] Mögliche Ursachen: Mojang-Server vorübergehend überlastet (Rate-Limit nach wiederholten Reconnects), oder das Microsoft-Konto besitzt keine aktive Minecraft Java Edition Lizenz.');
+      }
+
+      // Falls der Fehler vor oder während des Logins auftritt, sendet Mineflayer oft kein 'end'-Event.
+      // Automatischer Reconnect mit Backoff stellt sicher, dass der Bot nicht im Leerlauf hängenbleibt.
+      if (this.shouldRun && !this.isReconnecting && (!this.bot || !this.bot.entity)) {
+        this.broadcastState('RECONNECTING', false);
+        this.scheduleReconnect();
+      }
     });
 
     bot.on('end', (reason) => {
@@ -286,12 +374,17 @@ export class BotClient {
     });
   }
 
-  scheduleReconnect() {
+  scheduleReconnect(customDelayMs = null) {
     if (!this.shouldRun || this.isReconnecting) return;
     this.isReconnecting = true;
 
-    const delayMs = 5000;
-    logger.info(`Verbindung verloren. Starte automatischen Reconnect in ${delayMs / 1000}s...`);
+    // Exponentieller Backoff: 5s, 10s, 20s, 30s, max 60s
+    // Schützt vor Microsoft/Mojang API Rate-Limits bei Server-Ausfall
+    const backoffs = [5000, 10000, 20000, 30000, 60000];
+    const delayMs = customDelayMs !== null ? customDelayMs : backoffs[Math.min(this.reconnectAttempts, backoffs.length - 1)];
+    this.reconnectAttempts++;
+
+    logger.info(`Verbindung verloren oder fehlgeschlagen (Versuch ${this.reconnectAttempts}). Starte automatischen Reconnect in ${delayMs / 1000}s...`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.isReconnecting = false;

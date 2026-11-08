@@ -432,6 +432,100 @@ async function runViewerStateTranslatorTests() {
   }
   assert(bareSafe, '8.15 Aufruf von off/removeListener auf Minimal-Mock ohne Emitter-Methoden stürzt nicht ab');
 
+  // ---------------------------------------------------------
+  // Testgruppe 9: Shelves & Bookshelves Translation (26.1 & 26.3 -> 1.21.4)
+  // ---------------------------------------------------------
+  console.log('\n--- Testgruppe 9: Shelves & Bookshelves Translation (26.1 & 26.3 -> 1.21.4) ---');
+
+  const tgtBookshelfState = translatorA.tgtMcData.blocksByName['bookshelf'].defaultState;
+  const tgtChiseledBookshelfState = translatorA.tgtMcData.blocksByName['chiseled_bookshelf'].defaultState;
+  const tgtSpruceSlabState = translatorA.tgtMcData.blocksByName['spruce_slab'].defaultState;
+  const tgtOakSlabState = translatorA.tgtMcData.blocksByName['oak_slab'].defaultState;
+  const tgtBirchSlabState = translatorA.tgtMcData.blocksByName['birch_slab'].defaultState;
+  const tgtAcaciaSlabState = translatorA.tgtMcData.blocksByName['acacia_slab'].defaultState;
+  const tgtPaleOakSlabState = translatorA.tgtMcData.blocksByName['pale_oak_slab'].defaultState;
+  const tgtMushroomState = translatorA.tgtMcData.blocksByName['brown_mushroom'].defaultState;
+
+  // 26.1 Protocol 777 Translator Checks
+  const translator261 = ViewerStateTranslator.create('26.1', '1.21.4');
+  assert(translator261.translateStateId(2343) === tgtBookshelfState, '9.1 26.1 bookshelf (State 2343) übersetzt zu 1.21.4 bookshelf');
+  assert(translator261.translateStateId(2407) === tgtChiseledBookshelfState, '9.2 26.1 chiseled_bookshelf (State 2407) übersetzt zu 1.21.4 chiseled_bookshelf');
+  assert(translator261.translateStateId(2609) === tgtAcaciaSlabState, '9.3 26.1 acacia_shelf (State 2609) übersetzt zu 1.21.4 acacia_slab');
+  assert(translator261.translateStateId(2737) === tgtBirchSlabState, '9.4 26.1 birch_shelf (State 2737) übersetzt zu 1.21.4 birch_slab');
+  assert(translator261.translateStateId(3121) === tgtOakSlabState, '9.5 26.1 oak_shelf (State 3121) übersetzt zu 1.21.4 oak_slab');
+  assert(translator261.translateStateId(3249) === tgtSpruceSlabState, '9.6 26.1 spruce_shelf (State 3249) übersetzt zu 1.21.4 spruce_slab (kein Bücherregal)');
+
+  // 26.3 Custom Blocks Palette Checks on translatorA
+  assert(translatorA.translateStateId(3835) === tgtBookshelfState, '9.7 26.3 bookshelf (State 3835) übersetzt zu 1.21.4 bookshelf');
+  assert(translatorA.translateStateId(3899) === tgtChiseledBookshelfState, '9.8 26.3 chiseled_bookshelf (State 3899) übersetzt zu 1.21.4 chiseled_bookshelf');
+  assert(translatorA.translateStateId(4101) === tgtAcaciaSlabState, '9.9 26.3 acacia_shelf (State 4101) übersetzt zu 1.21.4 acacia_slab');
+  assert(translatorA.translateStateId(4229) === tgtBirchSlabState, '9.10 26.3 birch_shelf (State 4229) übersetzt zu 1.21.4 birch_slab');
+  assert(translatorA.translateStateId(4613) === tgtOakSlabState, '9.11 26.3 oak_shelf (State 4613) übersetzt zu 1.21.4 oak_slab');
+  assert(translatorA.translateStateId(4677) === tgtPaleOakSlabState, '9.12 26.3 pale_oak_shelf (State 4677) übersetzt zu 1.21.4 pale_oak_slab');
+  assert(translatorA.translateStateId(4741) === tgtOakSlabState, '9.13 26.3 poplar_shelf (State 4741) übersetzt zu 1.21.4 oak_slab');
+  assert(translatorA.translateStateId(4805) === tgtSpruceSlabState, '9.14 26.3 spruce_shelf (State 4805) übersetzt zu 1.21.4 spruce_slab (kein Bücherregal)');
+  assert(translatorA.translateStateId(11227) === tgtMushroomState, '9.15 26.3 shelf_mushroom (State 11227) übersetzt zu 1.21.4 brown_mushroom');
+
+  // Standard Terrain Blocks Integrity on translatorA (Proof of NO state overwrites)
+  const tgtShortGrass = translatorA.tgtMcData.blocksByName['short_grass'].defaultState;
+  const tgtFern = translatorA.tgtMcData.blocksByName['fern'].defaultState;
+  const tgtDeadBush = translatorA.tgtMcData.blocksByName['dead_bush'].defaultState;
+  assert(translatorA.translateStateId(2363) === tgtShortGrass, '9.16 26.3 short_grass (State 2363) bleibt Gras und wird KEIN Bücherregal');
+  assert(translatorA.translateStateId(2364) === tgtFern, '9.17 26.3 fern (State 2364) bleibt Farn und wird KEIN Bücherregal');
+  assert(translatorA.translateStateId(2365) === tgtDeadBush, '9.18 26.3 dead_bush (State 2365) bleibt Busch und wird KEIN Bücherregal');
+
+  // BlockUpdate Fallback Checks
+  assert(translatorA.translateBlockUpdate({ name: 'spruce_shelf' }) === tgtSpruceSlabState, '9.19 translateBlockUpdate({ name: "spruce_shelf" }) liefert spruce_slab');
+  assert(translatorA.translateBlockUpdate({ name: 'oak_shelf' }) === tgtOakSlabState, '9.20 translateBlockUpdate({ name: "oak_shelf" }) liefert oak_slab');
+  assert(translatorA.translateBlockUpdate({ name: 'pale_oak_shelf' }) === tgtPaleOakSlabState, '9.21 translateBlockUpdate({ name: "pale_oak_shelf" }) liefert pale_oak_slab');
+  assert(translatorA.translateBlockUpdate({ name: 'shelf_mushroom' }) === tgtMushroomState, '9.22 translateBlockUpdate({ name: "shelf_mushroom" }) liefert brown_mushroom');
+  assert(translatorA.translateBlockUpdate({ name: 'chiseled_bookshelf' }) === tgtChiseledBookshelfState, '9.23 translateBlockUpdate({ name: "chiseled_bookshelf" }) liefert chiseled_bookshelf');
+
+  // Palette Chunk Translation Check
+  const shelfPalette = [0, 3835, 3899, 4613, 4805, 11227, 2363];
+  translatorA.translateChunkPalette(shelfPalette);
+  assert(shelfPalette[1] === tgtBookshelfState, '9.24 Palettenindex 1 (26.3 bookshelf) übersetzt zu bookshelf');
+  assert(shelfPalette[2] === tgtChiseledBookshelfState, '9.25 Palettenindex 2 (26.3 chiseled_bookshelf) übersetzt zu chiseled_bookshelf');
+  assert(shelfPalette[3] === tgtOakSlabState, '9.26 Palettenindex 3 (26.3 oak_shelf) übersetzt zu oak_slab');
+  assert(shelfPalette[4] === tgtSpruceSlabState, '9.27 Palettenindex 4 (26.3 spruce_shelf) übersetzt zu spruce_slab');
+  assert(shelfPalette[5] === tgtMushroomState, '9.28 Palettenindex 5 (26.3 shelf_mushroom) übersetzt zu brown_mushroom');
+  assert(shelfPalette[6] === tgtShortGrass, '9.29 Palettenindex 6 (26.3 short_grass) übersetzt zu short_grass (kein Bücherregal)');
+
+  // Plural & Namespace Resiliency Checks
+  assert(translatorA.resolveFallbackBlock('spruce_shelves')?.name === 'spruce_slab', '9.30 spruce_shelves (Plural) löst zu spruce_slab auf');
+  assert(translatorA.resolveFallbackBlock('minecraft:spruce_shelf')?.name === 'spruce_slab', '9.31 minecraft:spruce_shelf mit Namespace löst zu spruce_slab auf');
+  assert(translatorA.resolveFallbackBlock('minecraft:spruce_shelves')?.name === 'spruce_slab', '9.32 minecraft:spruce_shelves mit Namespace löst zu spruce_slab auf');
+  assert(translatorA.translateBlockUpdate({ name: 'spruce_shelves' }) === tgtSpruceSlabState, '9.33 translateBlockUpdate({ name: "spruce_shelves" }) liefert spruce_slab');
+  assert(translatorA.translateBlockUpdate({ name: 'minecraft:spruce_shelf' }) === tgtSpruceSlabState, '9.34 translateBlockUpdate({ name: "minecraft:spruce_shelf" }) liefert spruce_slab');
+  assert(translatorA.translateBlockUpdate({ name: 'minecraft:spruce_shelves' }) === tgtSpruceSlabState, '9.35 translateBlockUpdate({ name: "minecraft:spruce_shelves" }) liefert spruce_slab');
+
+  // Minecraft Prefix Standard Terrain Blocks Integrity (No unwanted grass/log mutations)
+  const tgtGrassDefault = translatorA.tgtMcData.blocksByName['grass_block'].defaultState;
+  const tgtSpruceLogDefault = translatorA.tgtMcData.blocksByName['spruce_log'].defaultState;
+  assert(translatorA.translateBlockUpdate({ name: 'minecraft:grass_block' }) === tgtGrassDefault, '9.36 minecraft:grass_block bleibt grass_block und wird nicht zu short_grass');
+  assert(translatorA.translateBlockUpdate({ name: 'minecraft:spruce_log' }) === tgtSpruceLogDefault, '9.37 minecraft:spruce_log bleibt spruce_log und wird nicht zu oak_log');
+
+  // Slab Orientation & Waterlogging Preservation
+  const tgtTopSpruceSlab = translatorA.BlockTarget.fromProperties('spruce_slab', { type: 'top', waterlogged: false }).stateId;
+  const tgtWaterloggedBottomSlab = translatorA.BlockTarget.fromProperties('spruce_slab', { type: 'bottom', waterlogged: true }).stateId;
+  assert(translatorA.translateBlockUpdate({ name: 'spruce_shelf', getProperties: () => ({}) }) === tgtSpruceSlabState, '9.38 Leere Shelf-Properties defaulten auf waterlogged=false bottom slab');
+  assert(translatorA.translateBlockUpdate({ name: 'spruce_shelf', getProperties: () => ({ half: 'top' }) }) === tgtTopSpruceSlab, '9.39 half=top Shelf übersetzt zu top slab');
+  assert(translatorA.translateBlockUpdate({ name: 'spruce_shelf', getProperties: () => ({ type: 'top' }) }) === tgtTopSpruceSlab, '9.40 type=top Shelf übersetzt zu top slab');
+  assert(translatorA.translateBlockUpdate({ name: 'spruce_shelf', getProperties: () => ({ waterlogged: true }) }) === tgtWaterloggedBottomSlab, '9.41 waterlogged=true Shelf übersetzt zu waterlogged slab');
+
+  // Safe Fallback & Input Boundaries
+  assert(translatorA.resolveFallbackBlock(null) === null, '9.42 resolveFallbackBlock(null) stürzt nicht ab und liefert null');
+  assert(translatorA.resolveFallbackBlock(undefined) === null, '9.43 resolveFallbackBlock(undefined) stürzt nicht ab und liefert null');
+  assert(translatorA.resolveFallbackBlock(12345) === null, '9.44 resolveFallbackBlock(number) stürzt nicht ab und liefert null');
+
+  // Enum Property Mismatch Non-Corruption Verification (Note Block State 1480 bleibt Note Block)
+  const mapped1480 = translatorA.translateStateId(1480);
+  assert(translatorA.BlockTarget.fromStateId(mapped1480)?.name === 'note_block', '9.45 26.3 note_block (State 1480 mit neuem Instrument) bleibt note_block und wird nicht azalea_leaves');
+
+  // Builder Block Aliases Integration Check
+  const { BLOCK_ALIASES } = await import('../src/builder/blockAliases.js');
+  assert(BLOCK_ALIASES['spruce_shelves'] === 'spruce_shelf', '9.46 BLOCK_ALIASES normalisiert spruce_shelves zu spruce_shelf');
+
   console.log(`\n=== VIEWER STATE TRANSLATOR TEST SUITE: ${passedTests}/${totalTests} TESTS BESTANDEN ===\n`);
   process.exit(0);
 }

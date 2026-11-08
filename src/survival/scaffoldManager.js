@@ -397,6 +397,41 @@ export class ScaffoldManager {
         bot.setControlState('sneak', false);
       }
 
+      // Sicherheits-Prüfung: Steht der Bot auf einem der abzubauenden Gerüstblöcke?
+      // Falls ja, navigiere zuerst auf einen sicheren, festen Boden abseits des Gerüsts, um Fallschaden zu vermeiden.
+      if (bot && bot.entity && bot.pathfinder && typeof bot.pathfinder.goto === 'function') {
+        const botPos = bot.entity.position.floored();
+        const standingOnScaffold = this.isScaffoldBlock(botPos.offset(0, -1, 0)) || this.isScaffoldBlock(botPos);
+        if (standingOnScaffold) {
+          try {
+            const goals = await getPathfinderGoals();
+            let safeSpot = null;
+            for (let dx = -2; dx <= 2; dx++) {
+              for (let dz = -2; dz <= 2; dz++) {
+                if (dx === 0 && dz === 0) continue;
+                for (let dy = 0; dy >= -8; dy--) {
+                  const checkPos = botPos.offset(dx, dy, dz);
+                  const isScaffold = this.isScaffoldBlock(checkPos);
+                  const blockBelow = typeof bot.blockAt === 'function' ? bot.blockAt(checkPos.offset(0, -1, 0)) : null;
+                  const blockHere = typeof bot.blockAt === 'function' ? bot.blockAt(checkPos) : null;
+                  if (!isScaffold && blockBelow && blockBelow.boundingBox === 'block' && (!blockHere || blockHere.name?.includes('air'))) {
+                    safeSpot = checkPos;
+                    break;
+                  }
+                }
+                if (safeSpot) break;
+              }
+              if (safeSpot) break;
+            }
+            if (safeSpot && goals) {
+              await bot.pathfinder.goto(new goals.GoalBlock(safeSpot.x, safeSpot.y, safeSpot.z));
+            }
+          } catch (navErr) {
+            logger.debug(`[ScaffoldManager] Hinweis bei Sicherheitsabstieg: ${navErr.message}`);
+          }
+        }
+      }
+
       // Blöcke nach Y absteigend sortieren (von oben nach unten abbauen)
       const scaffolds = Array.from(this.activeScaffolds.values()).sort((a, b) => b.y - a.y);
 

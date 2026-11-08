@@ -12,91 +12,21 @@ import { scaffoldManager } from '../survival/scaffoldManager.js';
 import { harvestManager } from '../survival/harvestManager.js';
 import { manualController } from '../bot/manualController.js';
 
-export const FRAGILE_BLOCK_PATTERNS = [
-  'torch',
-  'wall_torch',
-  'lantern',
-  'soul_lantern',
-  '_door',
-  '_bed',
-  '_carpet',
-  '_trapdoor',
-  '_button',
-  'lever',
-  'ladder',
-  'vine',
-  'glow_lichen',
-  'flower_pot',
-  'bell',
-  '_banner',
-  '_sign',
-  'redstone_wire',
-  'repeater',
-  'comparator',
-  'campfire'
-];
+import {
+  FRAGILE_BLOCK_PATTERNS,
+  isFragileBlock,
+  parseBlockProperties,
+  sortNeighborsForBlock,
+  topologicalSort
+} from './blockTopology.js';
 
-export function isFragileBlock(blockName) {
-  if (!blockName || blockName === 'air') return false;
-  return FRAGILE_BLOCK_PATTERNS.some(pat => blockName.includes(pat) || blockName.endsWith(pat));
-}
-
-export function parseBlockProperties(blockStr) {
-  if (!blockStr || typeof blockStr !== 'string') return {};
-  const match = blockStr.match(/\[(.*)\]$/);
-  if (!match) return {};
-  const props = {};
-  for (const pair of match[1].split(',')) {
-    const [k, v] = pair.split('=');
-    if (k && v !== undefined) props[k.trim()] = v.trim();
-  }
-  return props;
-}
-
-export function sortNeighborsForBlock(neighbors, blockName, props = {}) {
-  const sorted = [...neighbors];
-  const name = (blockName || '').toLowerCase();
-
-  // 1. Wandfackeln & Wandlaternen
-  if (name.includes('wall_torch') || name.includes('wall_hanging')) {
-    const facing = props.facing || 'south';
-    const preferredFaceMap = {
-      south: { offset: new Vec3(0, 0, -1), face: new Vec3(0, 0, 1) },
-      north: { offset: new Vec3(0, 0, 1), face: new Vec3(0, 0, -1) },
-      east:  { offset: new Vec3(-1, 0, 0), face: new Vec3(1, 0, 0) },
-      west:  { offset: new Vec3(1, 0, 0), face: new Vec3(-1, 0, 0) }
-    };
-    const pref = preferredFaceMap[facing];
-    if (pref) {
-      sorted.sort((a, b) => (a.face.equals(pref.face) ? -1 : (b.face.equals(pref.face) ? 1 : 0)));
-      return sorted;
-    }
-  }
-
-  // 2. Achsen-Ausrichtung (Logs, Basalt, Säulen)
-  if (props.axis) {
-    if (props.axis === 'y') {
-      sorted.sort((a, b) => (Math.abs(a.face.y) > 0 ? -1 : (Math.abs(b.face.y) > 0 ? 1 : 0)));
-    } else if (props.axis === 'x') {
-      sorted.sort((a, b) => (Math.abs(a.face.x) > 0 ? -1 : (Math.abs(b.face.x) > 0 ? 1 : 0)));
-    } else if (props.axis === 'z') {
-      sorted.sort((a, b) => (Math.abs(a.face.z) > 0 ? -1 : (Math.abs(b.face.z) > 0 ? 1 : 0)));
-    }
-    return sorted;
-  }
-
-  // 3. Obere vs. untere Stufen & Treppen
-  if (props.half === 'top' || props.type === 'top') {
-    sorted.sort((a, b) => (a.face.y < 0 ? -1 : (b.face.y < 0 ? 1 : 0)));
-    return sorted;
-  }
-  if (props.half === 'bottom' || props.type === 'bottom') {
-    sorted.sort((a, b) => (a.face.y > 0 ? -1 : (b.face.y > 0 ? 1 : 0)));
-    return sorted;
-  }
-
-  return sorted;
-}
+export {
+  FRAGILE_BLOCK_PATTERNS,
+  isFragileBlock,
+  parseBlockProperties,
+  sortNeighborsForBlock,
+  topologicalSort
+};
 
 export class WorldExecutor {
   constructor() {
@@ -220,34 +150,7 @@ export class WorldExecutor {
    * Sortiert Blöcke in 2 Phasen (Träger & Fragil) und Boustrophedon-Pfad (Schlangenlinien)
    */
   topologicalSort(blockList) {
-    const phase1 = []; // Solide Struktur
-    const phase2 = []; // Fragile & angehängte Blöcke
-
-    for (const b of blockList) {
-      const name = b.name || b.blockState?.name || 'air';
-      if (isFragileBlock(name)) {
-        phase2.push(b);
-      } else {
-        phase1.push(b);
-      }
-    }
-
-    // Phase 1: Boustrophedon-Sortierung (y aufsteigend, z alternierend x auf-/absteigend)
-    phase1.sort((a, b) => {
-      if (a.y !== b.y) return a.y - b.y;
-      if (a.z !== b.z) return a.z - b.z;
-      // Bei ungeradem Z Schlangenlinie umkehren
-      const isReverseRow = Math.abs(a.z) % 2 === 1;
-      return isReverseRow ? b.x - a.x : a.x - b.x;
-    });
-
-    // Phase 2: Fragile Blöcke ebenfalls nach y aufsteigend (z. B. Tür-Unterteil vor Oberteil)
-    phase2.sort((a, b) => {
-      if (a.y !== b.y) return a.y - b.y;
-      return a.x - b.x || a.z - b.z;
-    });
-
-    return { phase1, phase2 };
+    return topologicalSort(blockList);
   }
 
   async executeBlockChange(bot, x, y, z, blockStateString, mode) {
@@ -533,6 +436,9 @@ export class WorldExecutor {
         }
         context.completedOps++;
         this.buildProgress.currentBlock = context.completedOps;
+        if (mode === 'pure_physical' && i % 20 === 0 && bot) {
+          inventoryManager.autoEatCheck(bot).catch(() => {});
+        }
       } catch (opErr) {
         logger.warn(`Ausnahme bei Blockoperation ${context.completedOps + 1} (${opErr.message}).`);
         // Wenn währenddessen getrennt oder pausiert wurde, sichere aktuellen Bauzustand
@@ -601,6 +507,9 @@ export class WorldExecutor {
         await this.executeBlockChange(bot, b.x, b.y, b.z, b.fullBlockString, mode);
         context.completedOps++;
         this.buildProgress.currentBlock = context.completedOps;
+        if (mode === 'pure_physical' && i % 20 === 0 && bot) {
+          inventoryManager.autoEatCheck(bot).catch(() => {});
+        }
       } catch (opErr) {
         logger.warn(`Ausnahme bei Phase-2 Blockoperation ${context.completedOps + 1} (${opErr.message}).`);
         if (this.isDisconnectError(bot, opErr) || bot?._client?.ended || opErr?.code === 'ERR_DISCONNECTED' || opErr?.code === 'ECONNRESET' || opErr?.code === 'ERR_STREAM_DESTROYED' || opErr?.message?.includes('disconnect')) {

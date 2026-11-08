@@ -77,7 +77,8 @@ export function registerBaseRoutes(app, context) {
       res.json({
         success: true,
         message: 'Einstellungen erfolgreich in .env gespeichert.',
-        result
+        result,
+        reconnected: shouldReconnect
       });
     } catch (err) {
       logger.error(`[Settings] Fehler beim Speichern: ${err.message}`);

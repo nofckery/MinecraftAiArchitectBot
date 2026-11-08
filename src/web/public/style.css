@@ -78,6 +78,24 @@
   --mc-water: #1976d2;
   --mc-wood: #8d6e63;
 
+  /* Minecraft GUI & HUD Theming Tokens */
+  --mc-hud-scale: 2.5;
+  --mc-gui-scale: 2.5;
+  --mc-item-count-color: #ffffff;
+  --mc-item-count-shadow: #3f3f3f;
+  --mc-tooltip-bg: #100010;
+  --mc-tooltip-border: #28007f;
+  --mc-tooltip-title: #ffffff;
+  --mc-tooltip-meta: #888888;
+  --mc-tooltip-durability: #55ff55;
+  --mc-close-btn-bg: #c62828;
+  --mc-close-btn-border: #1a1a1a;
+  --mc-close-btn-text: #c6c6c6;
+  --mc-slot-highlight: #ffffff;
+  --mc-durability-bg: #000000;
+  --mc-container-title: #cccccc;
+  --accent-green-alt: #22c55e;
+
   /* Typography & Text Hierarchy */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
@@ -3120,6 +3138,48 @@ body {
   height: 20px;
 }
 
+/* Mining / Digging Progress Ring & Bar */
+.gamemode-dig-progress {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--accent-cyan);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  min-width: 140px;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  transition: opacity 0.15s ease;
+}
+
+.gamemode-dig-progress.hidden {
+  display: none;
+}
+
+.dig-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(51, 65, 85, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dig-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green-alt));
+  transition: width 0.05s linear;
+}
+
+.dig-progress-text {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-pure);
+  font-weight: 600;
+}
+
 /* Raycast Tooltip */
 .gamemode-raycast-tooltip {
   margin-top: 28px;
@@ -3211,65 +3271,123 @@ body {
   transition: opacity 0.3s;
 }
 
-/* 9-Slot Hotbar */
+/* 9-Slot Minecraft HUD Hotbar */
 .gamemode-hotbar {
+  position: relative;
   display: flex;
-  gap: 4px;
-  background: rgba(10, 14, 20, 0.85);
-  border: 1px solid var(--border-bright);
-  padding: 4px;
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  width: calc(182px * var(--mc-hud-scale, 2.5));
+  height: calc(22px * var(--mc-hud-scale, 2.5));
+  background-image: url('/img/mc/hotbar.png');
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
   pointer-events: auto;
+  user-select: none;
 }
 
 .hotbar-slot {
-  width: 44px;
-  height: 44px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  position: relative;
+  position: absolute;
+  top: calc(1px * var(--mc-hud-scale, 2.5));
+  width: calc(20px * var(--mc-hud-scale, 2.5));
+  height: calc(20px * var(--mc-hud-scale, 2.5));
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.08s ease;
+}
+
+.hotbar-slot:hover {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.hotbar-slot.active {
+  box-shadow: inset 0 0 0 calc(1px * var(--mc-hud-scale, 2.5)) rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.hotbar-selection-frame {
+  position: absolute;
+  top: calc(-1px * var(--mc-hud-scale, 2.5));
+  width: calc(24px * var(--mc-hud-scale, 2.5));
+  height: calc(23px * var(--mc-hud-scale, 2.5));
+  background-image: url('/img/mc/hotbar_selection.png');
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  z-index: 5;
+  transition: left 0.08s ease;
+}
+
+.hotbar-offhand-slot {
+  position: absolute;
+  right: calc(100% + calc(6px * var(--mc-hud-scale, 2.5)));
+  top: calc(-1px * var(--mc-hud-scale, 2.5));
+  width: calc(29px * var(--mc-hud-scale, 2.5));
+  height: calc(24px * var(--mc-hud-scale, 2.5));
+  background-image: url('/img/mc/hotbar_offhand_left.png');
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.hotbar-slot:hover {
-  border-color: var(--border-bright);
-}
-
-.hotbar-slot.active {
-  border: 2px solid var(--accent-cyan);
-  background: var(--bg-card-hover);
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
 }
 
 .slot-num {
   position: absolute;
-  top: 2px;
-  left: 3px;
-  font-size: 9px;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
+  top: 1px;
+  left: 2px;
+  font-size: calc(6px * var(--mc-hud-scale, 2.5));
+  font-family: 'Minecraft', monospace;
+  color: rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+  line-height: 1;
 }
 
 .slot-icon {
-  font-size: 18px;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
-.slot-count {
+.hotbar-slot .mc-item-icon {
+  width: calc(16px * var(--mc-hud-scale, 2.5));
+  height: calc(16px * var(--mc-hud-scale, 2.5));
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+}
+
+.slot-count,
+.hotbar-slot .mc-item-count {
   position: absolute;
-  bottom: 2px;
-  right: 3px;
-  font-size: 10px;
-  font-family: var(--font-mono);
+  bottom: 0px;
+  right: calc(1px * var(--mc-hud-scale, 2.5));
+  font-size: calc(8px * var(--mc-hud-scale, 2.5));
+  font-family: 'Minecraft', monospace;
   font-weight: 700;
-  color: var(--text-pure);
-  text-shadow: 1px 1px 1px var(--text-inverse);
+  color: var(--mc-item-count-color);
+  text-shadow: calc(1px * var(--mc-hud-scale, 2.5)) calc(1px * var(--mc-hud-scale, 2.5)) 0px var(--mc-item-count-shadow);
+  pointer-events: none;
+  line-height: 1;
 }
 
 /* Detached Popout Placeholder */
@@ -3587,7 +3705,7 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.4;
-  color: #f1f5f9;
+  color: var(--text-heading);
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
   word-break: break-word;
   transition: opacity 0.6s ease;
@@ -3627,14 +3745,14 @@ body {
   background: transparent;
   border: none;
   outline: none;
-  color: #ffffff;
+  color: var(--text-pure);
   font-family: var(--font-mono);
   font-size: 13px;
 }
 
 .btn-chat-send {
   background: var(--accent-cyan);
-  color: #0b0f19;
+  color: var(--text-dark);
   font-weight: 700;
   font-size: 11px;
   border: none;
@@ -3645,241 +3763,329 @@ body {
 }
 
 .btn-chat-send:hover {
-  background: #fff;
+  background: var(--text-pure);
   box-shadow: 0 0 8px var(--accent-cyan);
 }
 
-/* --- Full Player Inventory Modal --- */
+/* --- Full Player Minecraft Inventory Modal & GUI --- */
 .gamemode-inventory-modal {
   position: absolute;
   inset: 0;
   z-index: 55;
-  background: rgba(5, 8, 15, 0.8);
-  backdrop-filter: blur(5px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: auto;
-}
-
-.inventory-card {
-  background: #182234;
-  border: 2px solid #3b82f6;
-  border-radius: 10px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  width: 460px;
-  max-width: 95vw;
-  max-height: 90vh;
-  overflow-y: auto;
-  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  color: #e2e8f0;
-}
-
-.inventory-header {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #334155;
-  padding-bottom: 8px;
-}
-
-.inventory-title {
-  font-weight: 800;
-  font-size: 13px;
-  letter-spacing: 0.5px;
-  color: var(--accent-cyan);
-}
-
-.inventory-header-hints {
-  display: flex;
-  align-items: center;
+  justify-content: center;
   gap: 10px;
-}
-
-.inv-shortcut-hint {
-  font-size: 10px;
-  color: #94a3b8;
-  font-family: var(--font-mono);
-}
-
-.btn-inv-close {
-  background: transparent;
-  border: 1px solid #475569;
-  color: #cbd5e1;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-inv-close:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
-  color: #fff;
-}
-
-.inv-section {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.inv-group-label,
-.inv-section-title {
-  font-size: 10px;
-  font-weight: 700;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-family: var(--font-mono);
-}
-
-.inv-upper-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(15, 23, 42, 0.6);
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid #334155;
-}
-
-.inv-equipment-slots {
-  display: flex;
-  gap: 6px;
-}
-
-.inv-actions-buttons {
-  display: flex;
-  gap: 6px;
-}
-
-.inv-grid {
-  display: grid;
-  gap: 4px;
-}
-
-.container-grid,
-.main-grid,
-.hotbar-grid {
-  grid-template-columns: repeat(9, 40px);
-  justify-content: center;
-}
-
-.inv-slot {
-  width: 40px;
-  height: 40px;
-  background: #0f172a;
-  border: 2px solid #334155;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  cursor: pointer;
+  pointer-events: auto;
   user-select: none;
-  transition: border-color 0.15s, background-color 0.15s;
 }
 
-.inv-slot:hover {
-  border-color: var(--accent-cyan);
-  background: #1e293b;
+/* Standard Survival Player Inventory Window (176x166) */
+.mc-inventory-window {
+  position: relative;
+  width: calc(176px * var(--mc-gui-scale, 2.5));
+  height: calc(166px * var(--mc-gui-scale, 2.5));
+  background-image: url('/img/mc/inventory.png');
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9);
 }
 
-.inv-slot.active {
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 8px rgba(0, 229, 255, 0.5);
-  background: rgba(0, 229, 255, 0.08);
-}
-
-.inv-slot .slot-icon {
-  font-size: 20px;
+/* Close button on top-right of Minecraft window */
+.btn-mc-close {
+  position: absolute;
+  top: calc(4px * var(--mc-gui-scale, 2.5));
+  right: calc(4px * var(--mc-gui-scale, 2.5));
+  width: calc(11px * var(--mc-gui-scale, 2.5));
+  height: calc(11px * var(--mc-gui-scale, 2.5));
+  background: rgba(40, 40, 40, 0.6);
+  border: 1px solid var(--mc-close-btn-border);
+  color: var(--mc-close-btn-text);
+  font-size: calc(7px * var(--mc-gui-scale, 2.5));
+  font-family: 'Minecraft', monospace;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  padding: 0;
+  border-radius: 2px;
+  transition: all 0.1s ease;
+}
+.btn-mc-close:hover {
+  background: var(--mc-close-btn-bg);
+  color: var(--text-pure);
 }
 
-.inv-slot .slot-bg-icon {
-  font-size: 18px;
-  opacity: 0.25;
-  filter: grayscale(1);
-}
-
-.inv-slot .slot-count {
+/* GUI Labels in authentic Minecraft style */
+.mc-gui-label {
   position: absolute;
-  bottom: 2px;
-  right: 3px;
-  font-size: 10px;
+  font-family: 'Minecraft', 'Minecraftia', 'Courier New', monospace;
+  font-size: calc(8px * var(--mc-gui-scale, 2.5));
   font-weight: 700;
-  font-family: var(--font-mono);
-  color: #fff;
-  text-shadow: 1px 1px 1px #000;
+  color: var(--mc-item-count-shadow);
   pointer-events: none;
+  line-height: 1;
+  user-select: none;
 }
 
-.inv-slot .slot-durability {
+.mc-label-crafting {
+  left: calc(86px * var(--mc-gui-scale, 2.5));
+  top: calc(16px * var(--mc-gui-scale, 2.5));
+}
+
+.mc-label-inventory {
+  left: calc(86px * var(--mc-gui-scale, 2.5));
+  top: calc(72px * var(--mc-gui-scale, 2.5));
+}
+
+.mc-label-container-title {
+  left: calc(8px * var(--mc-gui-scale, 2.5));
+  top: calc(6px * var(--mc-gui-scale, 2.5));
+}
+
+.mc-label-container-inv {
+  left: calc(8px * var(--mc-gui-scale, 2.5));
+  top: calc(72px * var(--mc-gui-scale, 2.5));
+}
+
+/* Player Doll Preview Box (25..75 x 7..79) */
+.mc-player-preview {
   position: absolute;
-  bottom: 1px;
-  left: 2px;
-  right: 2px;
-  height: 2px;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: 1px;
+  left: calc(25px * var(--mc-gui-scale, 2.5));
+  top: calc(7px * var(--mc-gui-scale, 2.5));
+  width: calc(51px * var(--mc-gui-scale, 2.5));
+  height: calc(72px * var(--mc-gui-scale, 2.5));
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   pointer-events: none;
 }
 
-.inv-slot .durability-fill {
+.mc-player-preview canvas {
+  width: 100%;
   height: 100%;
-  background: #22c55e;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
-/* --- Floating Cursor Held Item --- */
-.gamemode-held-item-cursor {
+/* Minecraft GUI Slots */
+.mc-slot,
+.inv-slot {
+  position: absolute;
+  width: calc(18px * var(--mc-gui-scale, 2.5));
+  height: calc(18px * var(--mc-gui-scale, 2.5));
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background-color: transparent;
+  transition: background-color 0.05s ease;
+  user-select: none;
+}
+
+.mc-slot:hover,
+.inv-slot:hover {
+  background-color: rgba(255, 255, 255, 0.32);
+}
+
+.mc-slot.active,
+.inv-slot.active {
+  box-shadow: inset 0 0 0 calc(1px * var(--mc-gui-scale, 2.5)) var(--mc-slot-highlight);
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Item Icons inside slots */
+.mc-slot .mc-item-icon,
+.inv-slot .mc-item-icon {
+  width: calc(16px * var(--mc-gui-scale, 2.5));
+  height: calc(16px * var(--mc-gui-scale, 2.5));
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  user-select: none;
+  display: block;
+}
+
+/* Ghost Icons in empty armor/shield slots */
+.mc-slot .slot-ghost-icon,
+.inv-slot .slot-ghost-icon {
+  width: calc(16px * var(--mc-gui-scale, 2.5));
+  height: calc(16px * var(--mc-gui-scale, 2.5));
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+  display: block;
+}
+
+/* Item Stack Count Number */
+.mc-slot .mc-item-count,
+.mc-slot .slot-count,
+.inv-slot .slot-count {
+  position: absolute;
+  right: calc(1px * var(--mc-gui-scale, 2.5));
+  bottom: 0px;
+  font-family: 'Minecraft', 'Minecraftia', 'Courier New', monospace;
+  font-size: calc(8px * var(--mc-gui-scale, 2.5));
+  line-height: 1;
+  font-weight: 700;
+  color: var(--mc-item-count-color);
+  text-shadow: calc(1px * var(--mc-gui-scale, 2.5)) calc(1px * var(--mc-gui-scale, 2.5)) 0px var(--mc-item-count-shadow);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Durability Bar */
+.mc-slot .mc-durability-bar,
+.inv-slot .slot-durability {
+  position: absolute;
+  bottom: calc(1px * var(--mc-gui-scale, 2.5));
+  left: calc(2px * var(--mc-gui-scale, 2.5));
+  width: calc(14px * var(--mc-gui-scale, 2.5));
+  height: calc(2px * var(--mc-gui-scale, 2.5));
+  background-color: var(--mc-durability-bg);
+  pointer-events: none;
+  border-radius: 0;
+}
+
+.mc-slot .mc-durability-fill,
+.inv-slot .durability-fill {
+  height: 100%;
+}
+
+/* Containers for main grid and hotbar inside inventory window */
+.mc-grid-container {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.mc-grid-container .mc-slot {
+  pointer-events: auto;
+}
+
+/* Container Window (Chests) */
+.mc-container-window {
+  position: relative;
+  width: calc(176px * var(--mc-gui-scale, 2.5));
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.9);
+}
+
+.mc-container-window.single-chest {
+  height: calc(166px * var(--mc-gui-scale, 2.5));
+  background-image: url('/img/mc/chest_27.png');
+  background-size: 100% 100%;
+}
+
+.mc-container-window.double-chest {
+  height: calc(222px * var(--mc-gui-scale, 2.5));
+  background-image: url('/img/mc/chest_54.png');
+  background-size: 100% 100%;
+}
+
+/* Bottom Shortcut Hints Bar */
+.mc-inventory-hints {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(10, 14, 25, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-family: 'Minecraft', monospace;
+  font-size: 11px;
+  color: var(--mc-container-title);
+}
+
+/* Floating Held Item Cursor */
+.gamemode-held-item-cursor,
+.mc-held-item-cursor {
   position: fixed;
   pointer-events: none;
-  z-index: 100;
+  z-index: 1000;
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.gamemode-held-item-cursor .held-icon {
-  font-size: 26px;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+.gamemode-held-item-cursor .held-icon,
+.mc-held-item-cursor .held-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.gamemode-held-item-cursor .held-count {
+.gamemode-held-item-cursor .mc-item-icon,
+.mc-held-item-cursor .mc-item-icon {
+  width: calc(16px * var(--mc-gui-scale, 2.5));
+  height: calc(16px * var(--mc-gui-scale, 2.5));
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  filter: drop-shadow(calc(1px * var(--mc-gui-scale, 2.5)) calc(2px * var(--mc-gui-scale, 2.5)) 0px rgba(0, 0, 0, 0.65));
+}
+
+.gamemode-held-item-cursor .held-count,
+.mc-held-item-cursor .held-count,
+.gamemode-held-item-cursor .mc-item-count,
+.mc-held-item-cursor .mc-item-count {
   position: absolute;
-  bottom: -4px;
-  right: -8px;
-  font-size: 11px;
-  font-weight: 800;
-  font-family: var(--font-mono);
-  color: #fff;
-  text-shadow: 1px 1px 2px #000;
+  right: calc(-3px * var(--mc-gui-scale, 2.5));
+  bottom: calc(-3px * var(--mc-gui-scale, 2.5));
+  font-family: 'Minecraft', monospace;
+  font-size: calc(8px * var(--mc-gui-scale, 2.5));
+  font-weight: 700;
+  color: var(--mc-item-count-color);
+  text-shadow: calc(1px * var(--mc-gui-scale, 2.5)) calc(1px * var(--mc-gui-scale, 2.5)) 0px var(--mc-item-count-shadow);
 }
 
-/* --- Item Hover Tooltip --- */
-.inventory-item-tooltip {
+/* Authentic Minecraft Item Hover Tooltip */
+.inventory-item-tooltip,
+.mc-inventory-tooltip {
   position: fixed;
-  z-index: 95;
+  z-index: 1005;
   pointer-events: none;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid var(--accent-cyan);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: #ffffff;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+  background-color: var(--mc-tooltip-bg);
+  border: calc(1px * var(--mc-gui-scale, 2.5)) solid var(--mc-tooltip-border);
+  box-shadow: inset 0 0 0 calc(1px * var(--mc-gui-scale, 2.5)) var(--mc-tooltip-bg), 0 0 calc(6px * var(--mc-gui-scale, 2.5)) rgba(0, 0, 0, 0.85);
+  border-radius: 2px;
+  padding: calc(3px * var(--mc-gui-scale, 2.5)) calc(5px * var(--mc-gui-scale, 2.5));
+  font-family: 'Minecraft', 'Minecraftia', monospace;
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mc-tooltip-title {
+  font-size: calc(8px * var(--mc-gui-scale, 2.5));
+  font-weight: 700;
+  color: var(--mc-tooltip-title);
+}
+
+.mc-tooltip-id {
+  font-size: calc(6.5px * var(--mc-gui-scale, 2.5));
+  color: var(--mc-tooltip-meta);
+}
+
+.mc-tooltip-durability {
+  font-size: calc(6.5px * var(--mc-gui-scale, 2.5));
+  color: var(--mc-tooltip-durability);
 }
 
 /* --- Pause Menu Overlay --- */
@@ -3896,7 +4102,7 @@ body {
 }
 
 .pause-menu-card {
-  background: #0f172a;
+  background: var(--text-dark);
   border: 2px solid var(--accent-cyan);
   border-radius: 12px;
   box-shadow: 0 0 32px rgba(0, 229, 255, 0.25);
@@ -3924,7 +4130,7 @@ body {
 
 .btn-pause-primary {
   background: var(--accent-cyan);
-  color: #000;
+  color: var(--text-inverse);
   font-weight: 800;
   font-size: 13px;
   border: none;
@@ -3940,11 +4146,11 @@ body {
 }
 
 .btn-pause-secondary {
-  background: #1e293b;
-  color: #f1f5f9;
+  background: var(--border-dark-slate);
+  color: var(--text-heading);
   font-weight: 600;
   font-size: 12px;
-  border: 1px solid #475569;
+  border: 1px solid var(--border-bright);
   padding: 9px 14px;
   border-radius: 6px;
   cursor: pointer;
@@ -3952,16 +4158,16 @@ body {
 }
 
 .btn-pause-secondary:hover {
-  background: #334155;
+  background: var(--border-slate);
   border-color: var(--accent-cyan);
 }
 
 .btn-pause-danger {
   background: rgba(244, 63, 94, 0.15);
-  color: #f43f5e;
+  color: var(--accent-rose);
   font-weight: 700;
   font-size: 12px;
-  border: 1px solid #f43f5e;
+  border: 1px solid var(--accent-rose);
   padding: 9px 14px;
   border-radius: 6px;
   cursor: pointer;
@@ -3969,8 +4175,8 @@ body {
 }
 
 .btn-pause-danger:hover {
-  background: #f43f5e;
-  color: #fff;
+  background: var(--accent-rose);
+  color: var(--text-pure);
 }
 
 .pause-sensitivity-setting {
@@ -3979,7 +4185,7 @@ body {
   gap: 6px;
   text-align: left;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   margin: 6px 0;
 }
@@ -4008,21 +4214,21 @@ body {
 .death-title {
   font-size: 32px;
   font-weight: 900;
-  color: #ef4444;
-  text-shadow: 0 0 20px rgba(239, 68, 68, 0.8), 2px 2px 0 #000;
+  color: var(--accent-red);
+  text-shadow: 0 0 20px rgba(239, 68, 68, 0.8), 2px 2px 0 var(--text-inverse);
   font-family: var(--font-mono);
   margin: 0;
 }
 
 .death-subtitle {
   font-size: 14px;
-  color: #fca5a5;
+  color: var(--accent-red-bright);
   margin: 0;
 }
 
 .btn-respawn {
-  background: #ef4444;
-  color: #fff;
+  background: var(--accent-red);
+  color: var(--text-pure);
   font-weight: 800;
   font-size: 14px;
   border: none;
@@ -4034,7 +4240,7 @@ body {
 }
 
 .btn-respawn:hover {
-  background: #dc2626;
+  background: var(--accent-red-deep);
   box-shadow: 0 0 24px rgba(239, 68, 68, 0.8);
   transform: translateY(-1px);
 }

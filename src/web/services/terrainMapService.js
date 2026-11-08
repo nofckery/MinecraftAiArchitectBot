@@ -41,8 +41,23 @@ export function generateAreaMapData(bot) {
     }
   }
 
+  const players = [];
+  if (bot && bot.players) {
+    for (const [name, p] of Object.entries(bot.players)) {
+      if (p?.entity?.position && name !== bot.username) {
+        players.push({
+          username: name,
+          x: Math.floor(p.entity.position.x),
+          y: Math.floor(p.entity.position.y),
+          z: Math.floor(p.entity.position.z),
+          distance: Math.round(bot.entity?.position?.distanceTo(p.entity.position) || 0)
+        });
+      }
+    }
+  }
+
   const isSimulated = !bot || typeof bot.blockAt !== 'function';
-  return { grid, center: { x: cx, y: cy, z: cz }, isSimulated };
+  return { grid, center: { x: cx, y: cy, z: cz }, isSimulated, players };
 }
 
 /**
