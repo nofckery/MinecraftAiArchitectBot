@@ -76,7 +76,7 @@
     "test:survival-hardening": "node test/survivalHardeningAndSensibleImprovementsTest.js",
     "test:popout": "node test/viewerFullscreenAndPopoutTest.js",
     "test:cad-studio": "node test/cadWorldStudioPerfectionTest.js",
-    "check:syntax": "node --check src/web/public/app.js && node --check src/web/public/js/viewerController.js && node --check src/web/public/js/popoutViewer.js && node --check src/web/public/js/threeViewport.js && node --check src/web/public/js/manualCockpit.js && node --check src/web/public/js/sceneGraph.js"
+    "check:syntax": "node --check index.js && node --check src/web/public/app.js && node --check src/web/public/js/viewerController.js && node --check src/web/public/js/popoutViewer.js && node --check src/web/public/js/threeViewport.js && node --check src/web/public/js/manualCockpit.js && node --check src/web/public/js/sceneGraph.js"
   },
   "dependencies": {
     "canvas": "^3.2.3",
