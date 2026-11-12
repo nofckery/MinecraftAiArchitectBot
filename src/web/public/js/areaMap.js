@@ -11,8 +11,9 @@
  * @param {Object} areaMapData
  * @param {Object|null} mapSelection - { x1, z1, x2, z2 }
  * @param {string} buildBoxFacing - 'north' | 'south' | 'west' | 'east'
+ * @param {Object|null} activeWaypoint - { col, row, x, z }
  */
-export function drawAreaMap(canvas, ctx, areaMapData, mapSelection = null, buildBoxFacing = 'north') {
+export function drawAreaMap(canvas, ctx, areaMapData, mapSelection = null, buildBoxFacing = 'north', activeWaypoint = null) {
   if (!ctx || !canvas || !areaMapData) return;
 
   const mapNotice = document.getElementById('mapSimulatedNotice');
@@ -78,6 +79,44 @@ export function drawAreaMap(canvas, ctx, areaMapData, mapSelection = null, build
   ctx.beginPath();
   ctx.arc(bCol + tileSize / 2, bRow + tileSize / 2, tileSize * 1.2, 0, Math.PI * 2);
   ctx.fill();
+
+  // Draw Active Target Waypoint if set
+  if (activeWaypoint && typeof activeWaypoint.col === 'number') {
+    const wx = activeWaypoint.col * tileSize + tileSize / 2;
+    const wy = activeWaypoint.row * tileSize + tileSize / 2;
+
+    // Dashed path from bot to target waypoint
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(bCol + tileSize / 2, bRow + tileSize / 2);
+    ctx.lineTo(wx, wy);
+    ctx.stroke();
+    ctx.restore();
+
+    // Glowing target marker
+    ctx.save();
+    ctx.strokeStyle = '#00e5ff';
+    ctx.fillStyle = 'rgba(0, 229, 255, 0.25)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(wx, wy, tileSize * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Center crosshairs
+    ctx.beginPath();
+    ctx.moveTo(wx - tileSize * 1.8, wy);
+    ctx.lineTo(wx + tileSize * 1.8, wy);
+    ctx.moveTo(wx, wy - tileSize * 1.8);
+    ctx.lineTo(wx, wy + tileSize * 1.8);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // Draw Selection Box on Map if present
   if (mapSelection) {

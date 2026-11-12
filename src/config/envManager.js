@@ -72,7 +72,9 @@ export class EnvManager {
       SINGLE_ACCOUNT_HANDOFF_MODE: settings.SINGLE_ACCOUNT_HANDOFF_MODE,
       SERVER_PING_INTERVAL_MS: settings.SERVER_PING_INTERVAL_MS,
       WEB_DASHBOARD_PORT: settings.WEB_DASHBOARD_PORT,
-      PRISMARINE_VIEWER_PORT: settings.PRISMARINE_VIEWER_PORT
+      ENABLE_PRISMARINE_VIEWER: settings.ENABLE_PRISMARINE_VIEWER,
+      PRISMARINE_VIEWER_PORT: settings.PRISMARINE_VIEWER_PORT,
+      ENABLE_MINECRAFT_CHAT: settings.ENABLE_MINECRAFT_CHAT !== false
     };
   }
 
@@ -306,7 +308,9 @@ export class EnvManager {
       else if (key === 'SINGLE_ACCOUNT_HANDOFF_MODE') settings.SINGLE_ACCOUNT_HANDOFF_MODE = strVal.toLowerCase() === 'true' || strVal === '1';
       else if (key === 'SERVER_PING_INTERVAL_MS') settings.SERVER_PING_INTERVAL_MS = parseInt(strVal, 10) || 10000;
       else if (key === 'WEB_DASHBOARD_PORT') settings.WEB_DASHBOARD_PORT = parseInt(strVal, 10) || 3080;
+      else if (key === 'ENABLE_PRISMARINE_VIEWER') settings.ENABLE_PRISMARINE_VIEWER = strVal.toLowerCase() === 'true' || strVal === '1';
       else if (key === 'PRISMARINE_VIEWER_PORT') settings.PRISMARINE_VIEWER_PORT = parseInt(strVal, 10) || 3081;
+      else if (key === 'ENABLE_MINECRAFT_CHAT') settings.ENABLE_MINECRAFT_CHAT = strVal.toLowerCase() === 'true' || strVal === '1';
       else if (key === 'CEREBRAS_API_KEYS') settings.CEREBRAS_API_KEYS = strVal.split(',').map(s => s.trim()).filter(Boolean);
       else if (key === 'CEREBRAS_FAST_MODEL') settings.CEREBRAS_FAST_MODEL = strVal;
       else if (key === 'CEREBRAS_ARCHITECT_MODEL') settings.CEREBRAS_ARCHITECT_MODEL = strVal;

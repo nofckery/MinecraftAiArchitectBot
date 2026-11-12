@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import crypto from 'node:crypto';
+import { registerDeviceFlowEndpoints } from './deviceFlowEndpoints.js';
 import { CredentialVault } from './credentialVault.js';
 import { logger } from '../utils/logger.js';
 
@@ -29,6 +30,7 @@ export class DeviceFlowManager extends EventEmitter {
     this.llmRouter = options.llmRouter || null;
     this.log = options.logger || logger;
 
+    this.provider = options.provider || 'GitHub';
     this.clientId = options.clientId || process.env.GITHUB_CLIENT_ID || '178c6fc778ccc68e1d6a';
     this.scope = options.scope !== undefined ? options.scope : (process.env.GITHUB_DEVICE_SCOPE || 'read:user');
     this.deviceCodeUrl = options.deviceCodeUrl || process.env.GITHUB_DEVICE_CODE_URL || 'https://github.com/login/device/code';
@@ -49,10 +51,20 @@ export class DeviceFlowManager extends EventEmitter {
    * @returns {Promise<Object>} Session info with userCode, verificationUri, etc.
    */
   async startDeviceFlow(options = {}) {
-    const clientId = options.clientId || this.clientId;
-    const scope = options.scope !== undefined ? options.scope : this.scope;
-    const deviceCodeUrl = options.deviceCodeUrl || this.deviceCodeUrl;
-    const tokenUrl = options.tokenUrl || this.tokenUrl;
+    const provider = options.provider || this.provider || 'GitHub';
+    let clientId = options.clientId || this.clientId;
+    let scope = options.scope !== undefined ? options.scope : this.scope;
+    let deviceCodeUrl = options.deviceCodeUrl || this.deviceCodeUrl;
+    let tokenUrl = options.tokenUrl || this.tokenUrl;
+    let defaultVerificationUri = 'https://github.com/login/device';
+
+    if (provider.toLowerCase() === 'huggingface' || provider.toLowerCase() === 'hf') {
+      clientId = options.clientId || process.env.HUGGINGFACE_CLIENT_ID || 'mc-architect-bot';
+      scope = options.scope !== undefined ? options.scope : 'inference-api';
+      deviceCodeUrl = options.deviceCodeUrl || 'https://huggingface.co/oauth/device';
+      tokenUrl = options.tokenUrl || 'https://huggingface.co/oauth/token';
+      defaultVerificationUri = 'https://huggingface.co/device';
+    }
 
     const payload = {
       client_id: clientId
@@ -97,11 +109,12 @@ export class DeviceFlowManager extends EventEmitter {
     const expiresIn = Number(data.expires_in) || 900;
     const interval = Math.max(1, Number(data.interval) || 5);
     const userCode = data.user_code || '';
-    const verificationUri = data.verification_uri || 'https://github.com/login/device';
+    const verificationUri = data.verification_uri || defaultVerificationUri;
     const verificationUriComplete = data.verification_uri_complete || `${verificationUri}?user_code=${encodeURIComponent(userCode)}`;
 
     const session = {
       sessionId,
+      provider,
       clientId,
       tokenUrl,
       deviceCode: data.device_code,
@@ -274,122 +287,27 @@ export class DeviceFlowManager extends EventEmitter {
   async _handleSuccess(session, accessToken) {
     session.status = 'success';
     session.accessToken = accessToken;
-    const credentialRef = 'sec_github_models';
+    const provider = session.provider || 'GitHub';
 
-    // 1. Vault Storage
-    if (this.vault) {
-      await this.vault.storeSecret(credentialRef, {
-        type: 'oauth_device_flow',
-        provider: 'GitHub',
-        token: accessToken.trim(),
-        expiresAt: null
-      });
-    }
+    const result = await registerDeviceFlowEndpoints({
+      vault: this.vault,
+      endpointManager: this.endpointManager,
+      llmRouter: this.llmRouter,
+      provider,
+      accessToken,
+      log: this.log
+    });
 
-    // 2. EndpointManager Upsert
-    let endpointId = 'ep_github_models';
-    if (this.endpointManager) {
-      const all = typeof this.endpointManager.getAllEndpoints === 'function'
-        ? this.endpointManager.getAllEndpoints()
-        : [];
-
-      const existing = all.find(e =>
-        e.id === 'ep_github_models' ||
-        e.credentialRef === credentialRef ||
-        (e.provider === 'GitHub' && e.baseUrl && e.baseUrl.includes('models.github.ai'))
-      );
-
-      // 2a. Architect Tier Endpoint (GPT-4o)
-      if (existing) {
-        endpointId = existing.id;
-        await this.endpointManager.updateEndpoint(existing.id, {
-          enabled: true,
-          authType: 'oauth_device_flow',
-          credentialRef,
-          baseUrl: 'https://models.github.ai/inference',
-          modelId: existing.modelId || 'openai/gpt-4o'
-        }, accessToken);
-      } else {
-        const created = await this.endpointManager.createEndpoint({
-          id: 'ep_github_models',
-          name: 'GitHub Models (GPT-4o)',
-          provider: 'GitHub',
-          category: 'cloud',
-          tier: 'ARCHITECT_TIER',
-          enabled: true,
-          priority: 1,
-          baseUrl: 'https://models.github.ai/inference',
-          modelId: 'openai/gpt-4o',
-          authType: 'oauth_device_flow',
-          credentialRef,
-          temperature: 0.2,
-          maxTokens: 4000,
-          contextWindow: 128000,
-          isThinkingModel: false
-        }, accessToken);
-        endpointId = created.id;
-      }
-
-      // 2b. Fast Tier Endpoint (GPT-4o-mini)
-      const existingFast = all.find(e =>
-        e.id === 'ep_github_models_fast' ||
-        (e.provider === 'GitHub' && e.baseUrl && e.baseUrl.includes('models.github.ai') && e.tier === 'FAST_TIER')
-      );
-
-      if (existingFast) {
-        await this.endpointManager.updateEndpoint(existingFast.id, {
-          enabled: true,
-          authType: 'oauth_device_flow',
-          credentialRef,
-          baseUrl: 'https://models.github.ai/inference',
-          modelId: existingFast.modelId || 'openai/gpt-4o-mini'
-        }, accessToken);
-      } else {
-        await this.endpointManager.createEndpoint({
-          id: 'ep_github_models_fast',
-          name: 'GitHub Models (GPT-4o-mini)',
-          provider: 'GitHub',
-          category: 'cloud',
-          tier: 'FAST_TIER',
-          enabled: true,
-          priority: 1,
-          baseUrl: 'https://models.github.ai/inference',
-          modelId: 'openai/gpt-4o-mini',
-          authType: 'oauth_device_flow',
-          credentialRef,
-          temperature: 0.2,
-          maxTokens: 4000,
-          contextWindow: 128000,
-          isThinkingModel: false
-        }, accessToken);
-      }
-
-      // 2c. Activate primary tiers if supported
-      if (typeof this.endpointManager.activateTier === 'function') {
-        try {
-          await this.endpointManager.activateTier('ARCHITECT_TIER', endpointId);
-          await this.endpointManager.activateTier('FAST_TIER', 'ep_github_models_fast');
-        } catch (tierErr) {
-          this.log?.warn?.(`[DeviceFlowManager] Konnte Tier nicht aktivieren: ${tierErr.message}`);
-        }
-      }
-
-      // 3. Hot-Reload Pools in LLMRouter
-      if (this.llmRouter) {
-        await this.llmRouter.reloadPools(this.endpointManager);
-      }
-    }
-
-    session.endpointId = endpointId;
+    session.endpointId = result.endpointId;
 
     const payload = {
       sessionId: session.sessionId,
-      endpointId,
-      provider: 'GitHub',
-      model: 'openai/gpt-4o'
+      endpointId: result.endpointId,
+      provider: result.provider,
+      model: result.model
     };
 
-    this.log?.info?.(`[DeviceFlowManager] GitHub Models erfolgreich autorisiert (Endpoint: ${endpointId}).`);
+    this.log?.info?.(`[DeviceFlowManager] ${payload.provider} Models erfolgreich autorisiert (Endpoint: ${result.endpointId}).`);
     this.emit('authenticated', { ...payload, token: accessToken });
     this.emit('device_auth_success', payload);
   }
@@ -414,8 +332,8 @@ export class DeviceFlowManager extends EventEmitter {
 
     if (session.status === 'success') {
       result.endpointId = session.endpointId;
-      result.provider = 'GitHub';
-      result.model = 'openai/gpt-4o';
+      result.provider = session.provider || 'GitHub';
+      result.model = (session.provider === 'HuggingFace') ? 'meta-llama/Llama-3.3-70B-Instruct:fastest' : 'openai/gpt-4o';
     } else if (session.error) {
       result.error = session.error;
     }

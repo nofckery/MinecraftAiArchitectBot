@@ -224,6 +224,21 @@ export function initViewerController() {
   }
 }
 
+/**
+ * Broadcasts the current viewer enabled/running state to popped-out windows
+ * @param {boolean} enabled
+ * @param {boolean} running
+ * @param {number|string} [port]
+ */
+export function broadcastViewerState(enabled, running, port) {
+  broadcastMessage({
+    type: 'VIEWER_STATE_CHANGED',
+    enabled: Boolean(enabled),
+    running: Boolean(running),
+    port
+  });
+}
+
 export const viewerController = {
   isPoppedOut,
   openPopout,
@@ -231,6 +246,7 @@ export const viewerController = {
   focusPopout,
   toggleFullscreen,
   onStateChange,
+  broadcastViewerState,
   initViewerController
 };
 

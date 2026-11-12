@@ -192,8 +192,8 @@ async function runMilestone2SurvivalTests() {
   pass('BED_SEARCH_RADIUS Setting (32m) konfiguriert');
 
   assert.strictEqual(typeof settings.SLEEP_DISCONNECT_ON_NO_BED, 'boolean');
-  assert.strictEqual(settings.SLEEP_DISCONNECT_ON_NO_BED, true);
-  pass('SLEEP_DISCONNECT_ON_NO_BED Setting (true) konfiguriert');
+  assert.strictEqual(settings.SLEEP_DISCONNECT_ON_NO_BED, false);
+  pass('SLEEP_DISCONNECT_ON_NO_BED Setting (false) standardmäßig konfiguriert');
 
   assert.strictEqual(typeof settings.SLEEP_RECONNECT_DELAY_SEC, 'number');
   assert.strictEqual(settings.SLEEP_RECONNECT_DELAY_SEC, 25);
@@ -628,6 +628,16 @@ async function runMilestone2SurvivalTests() {
     }
   };
 
+  // Test disabled toggle first: bot should NOT disconnect if SLEEP_DISCONNECT_ON_NO_BED is false
+  settings.SLEEP_DISCONNECT_ON_NO_BED = false;
+  const noDisconnectSc = new SleepController(mockClient);
+  await noDisconnectSc.handleSleepOpportunity();
+  assert.strictEqual(noDisconnectSc.state, SLEEP_STATES.AWAKE, 'Bot must stay AWAKE when night disconnect is toggled off');
+  assert.strictEqual(homelessBot.connected, true, 'Bot must stay connected');
+  pass('Toggle Aus: handleSleepOpportunity trennt Bot nicht wenn SLEEP_DISCONNECT_ON_NO_BED=false');
+
+  // Test enabled toggle: bot cleanly disconnects
+  settings.SLEEP_DISCONNECT_ON_NO_BED = true;
   const homelessSc = new SleepController(mockClient);
   worldExecutor.isBuilding = true;
 

@@ -77,7 +77,53 @@
           <span class="gamemode-label">MANUAL COCKPIT (POPOUT)</span>
           <span id="gamemodeCoordinates" class="gamemode-coords">X: 0.0 Y: 0.0 Z: 0.0</span>
         </div>
-        <button id="btnExitGamemode" class="btn-gamemode-exit" title="Gamemode beenden und Fenster schließen (ESC)" type="button">✕ Beenden (ESC)</button>
+        <div class="gamemode-top-actions">
+          <button id="btnGamemodeHelp" class="btn-gamemode-help" title="Tastenbelegung &amp; Steuerungshilfe einblenden (H)" type="button">❓ Steuerung [H]</button>
+          <button id="btnExitGamemode" class="btn-gamemode-exit" title="Gamemode beenden und Fenster schließen (ESC)" type="button">✕ Beenden (ESC)</button>
+        </div>
+      </div>
+
+      <!-- Controls Cheat Sheet Overlay (Toggled via 'H' or button) -->
+      <div id="gamemodeHelpOverlay" class="gamemode-help-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="gamemodeHelpTitle">
+        <div class="help-card">
+          <div class="help-card-header">
+            <div class="help-title-group">
+              <span class="help-icon">🎮</span>
+              <h3 id="gamemodeHelpTitle">FIRST-PERSON STEUERUNG (MINECRAFT TASTATURBELEGUNG)</h3>
+            </div>
+            <button type="button" id="btnCloseGamemodeHelp" class="btn-micro" title="Schließen (H / ESC)">✕</button>
+          </div>
+          <div class="help-grid">
+            <div class="help-col">
+              <div class="help-group-title">🚶 Bewegung &amp; Blick</div>
+              <div class="keybind-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Vorwärts / Links / Rückwärts / Rechts</span></div>
+              <div class="keybind-row"><kbd>Leertaste</kbd><span>Springen (Jump)</span></div>
+              <div class="keybind-row"><kbd>Umschalt</kbd><span>Schleichen (Sneak)</span></div>
+              <div class="keybind-row"><kbd>Strg</kbd><span>Sprinten (Run)</span></div>
+              <div class="keybind-row"><kbd>Maus</kbd><span>Blickrichtung / Umschauen (Pointer Lock)</span></div>
+            </div>
+            <div class="help-col">
+              <div class="help-group-title">⚔️ Aktionen &amp; Interaktion</div>
+              <div class="keybind-row"><kbd>Linksklick</kbd><span>Abbauen (Mining) / Angreifen</span></div>
+              <div class="keybind-row"><kbd>Rechtsklick</kbd><span>Block platzieren / Benutzen / Kiste öffnen</span></div>
+              <div class="keybind-row"><kbd>1</kbd> - <kbd>9</kbd> / <kbd>Mausrad</kbd><span>Hotbar-Slot wählen</span></div>
+              <div class="keybind-row"><kbd>F</kbd><span>Haupt- und Zweithand tauschen</span></div>
+              <div class="keybind-row"><kbd>Q</kbd> / <kbd>Strg+Q</kbd><span>Item wegwerfen (1x / ganzer Stapel)</span></div>
+            </div>
+            <div class="help-col">
+              <div class="help-group-title">🎒 Menüs &amp; Server-Tools</div>
+              <div class="keybind-row"><kbd>E</kbd><span>Survival-Inventar &amp; Crafting (2x2)</span></div>
+              <div class="keybind-row"><kbd>T</kbd> / <kbd>/</kbd><span>In-Game Chat öffnen / Befehl senden</span></div>
+              <div class="keybind-row"><kbd>Tab</kbd><span>Spielerliste &amp; Pings anzeigen</span></div>
+              <div class="keybind-row"><kbd>ESC</kbd><span>Pause-Menü / Standby / Mauszeiger lösen</span></div>
+              <div class="keybind-row"><kbd>H</kbd><span>Diese Steuerungshilfe ein-/ausblenden</span></div>
+            </div>
+          </div>
+          <div class="help-footer">
+            <span>💡 Tipp: Im Inventar kannst du mit <strong>Shift+Klick</strong> Items sofort transferieren und mit <strong>Rechtsklick</strong> Stapel teilen.</span>
+            <button type="button" id="btnDismissHelpFooter" class="btn btn-primary btn-sm">Verstanden (H)</button>
+          </div>
+        </div>
       </div>
 
       <!-- Center HUD: Reticle & Raycast Inspection -->
@@ -247,6 +293,7 @@
           <div class="pause-menu-title">SPIEL PAUSIERT</div>
           <div class="pause-menu-buttons">
             <button type="button" id="btnResumeGame" class="btn-pause-primary">▶ Zurück zum Spiel</button>
+            <button type="button" id="btnOpenHelpFromPause" class="btn-pause-secondary">❓ Steuerungshilfe anzeigen (H)</button>
             <button type="button" id="btnOpenInventoryFromPause" class="btn-pause-secondary">🎒 Inventar öffnen (E)</button>
             <button type="button" id="btnOpenChatFromPause" class="btn-pause-secondary">💬 Chat öffnen (T)</button>
             <div class="pause-sensitivity-setting">
@@ -275,6 +322,19 @@
 
       <!-- Item Hover Tooltip -->
       <div id="inventoryItemTooltip" class="inventory-item-tooltip hidden"></div>
+
+      <!-- Minecraft Player Tablist Overlay (Hold Tab) -->
+      <div id="gamemodePlayerTablist" class="gamemode-player-tablist hidden" role="region" aria-label="Minecraft Spielerliste">
+        <div class="mc-tablist-container">
+          <div id="mcTablistHeader" class="mc-tablist-header hidden"></div>
+          <div class="mc-tablist-server-bar">
+            <span class="mc-tablist-title">Spieler auf dem Server</span>
+            <span id="mcTablistPlayerCount" class="mc-tablist-count">(0)</span>
+          </div>
+          <div id="mcTablistPlayerGrid" class="mc-tablist-player-grid"></div>
+          <div id="mcTablistFooter" class="mc-tablist-footer hidden"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -330,9 +390,22 @@
       } else if (msg.type === 'manual_control_state') {
         handleGamemodeState(msg);
       } else if (msg.type === 'status' && msg.viewerPort && viewerFrame) {
-        const target = `${window.location.protocol}//${window.location.hostname}:${msg.viewerPort}`;
-        if (!viewerFrame.src || viewerFrame.src === 'about:blank') {
-          viewerFrame.src = target;
+        if (msg.viewerEnabled !== false) {
+          const target = `${window.location.protocol}//${window.location.hostname}:${msg.viewerPort}`;
+          if (!viewerFrame.src || viewerFrame.src === 'about:blank') {
+            viewerFrame.src = target;
+          }
+        } else {
+          viewerFrame.src = 'about:blank';
+        }
+      } else if (msg.type === 'viewer_state_changed' && viewerFrame) {
+        if (msg.enabled === false) {
+          viewerFrame.src = 'about:blank';
+        } else if (msg.port) {
+          const target = `${window.location.protocol}//${window.location.hostname}:${msg.port}`;
+          if (!viewerFrame.src || viewerFrame.src === 'about:blank') {
+            viewerFrame.src = target;
+          }
         }
       }
     });

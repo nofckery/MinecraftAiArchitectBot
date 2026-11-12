@@ -113,3 +113,96 @@ Die Diff-Engine wird danach automatisch nur die Differenz-Blöcke ermitteln und 
 Liefere den vollständigen, aktualisierten JavaScript-Code zurück.
 `.trim();
 }
+
+/**
+ * Erstellt einen vollständigen Spatial Scene Context Digest für das LLM,
+ * damit die KI im CAD World Studio jederzeit das gescannte Gelände, alle platzierten
+ * Gebäude (Scene Graph), deren Kollisionen/Fundamente und alle manuellen User-Änderungen sieht.
+ */
+export function createSpatialSceneContextDigest(sceneContext = {}) {
+  const { terrain, objects = [], activeObjectId = null, userDeltas = [], verifierSummary = null } = sceneContext;
+  const lines = ['### 🌐 OMNIPRESENT SPATIAL CAD STUDIO CONTEXT — LIVE RÄUMLICHER SZENEN-KONTEXT'];
+
+  if (terrain && terrain.bounds) {
+    const dom = Array.isArray(terrain.dominantBlocks)
+      ? terrain.dominantBlocks.map(d => `${d.name} (${d.count}x)`).join(', ')
+      : 'grass_block, stone';
+    const waterCount = Array.isArray(terrain.waterColumns) ? terrain.waterColumns.length : 0;
+    lines.push(
+      `1. **Gescanntes Welt-Terrain (${terrain.source || 'live'}):**`,
+      `   - Zentrum: (${terrain.center?.x ?? 0}, ${terrain.center?.y ?? 64}, ${terrain.center?.z ?? 0}), Radius: ${terrain.radius || 32} Blöcke`,
+      `   - Höhenprofil (Y): min=${terrain.bounds.minY}, max=${terrain.bounds.maxY} (Höhenunterschied: ${terrain.bounds.maxY - terrain.bounds.minY} Blöcke)`,
+      `   - Dominante Biom-Oberflächen: ${dom}`,
+      `   - Wasserflächen im Gebiet: ${waterCount} Wassersäulen`
+    );
+  } else {
+    lines.push('1. **Gescanntes Welt-Terrain:** Noch kein Geländescan geladen (Standard-Ebene Y=64).');
+  }
+
+  if (objects.length > 0) {
+    lines.push(`2. **Platzierte Objekte im Scene Graph (${objects.length} Bauwerke):**`);
+    for (const obj of objects) {
+      const isSelected = obj.id === activeObjectId ? ' [AKTIV AUSGEWÄHLT]' : '';
+      const pos = obj.position || { x: 0, y: 64, z: 0 };
+      const w = obj.bounds?.width || obj.width || 16;
+      const h = obj.bounds?.height || obj.height || 16;
+      const d = obj.bounds?.depth || obj.depth || 16;
+      const topMats = obj.bom
+        ? Object.entries(obj.bom).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k}(${v})`).join(', ')
+        : 'Standard';
+      lines.push(
+        `   - [${obj.id}] "${obj.name}"${isSelected}: Pos(${pos.x}, ${pos.y}, ${pos.z}), Maße(${w}x${h}x${d}), Blickrichtung=${obj.facing || 'north'}, Rotation=${obj.rotation || 0}°, Materialien=[${topMats}]`
+      );
+    }
+  } else {
+    lines.push('2. **Platzierte Objekte im Scene Graph:** Aktuell noch keine Gebäude platziert.');
+  }
+
+  if (verifierSummary) {
+    lines.push(
+      `3. **Litematica-Verifier Status:** Kollisionen=${verifierSummary.totalCollisions || 0}, Fundament-Lücken=${verifierSummary.totalFoundationGaps || 0}, Solide Stützen=${verifierSummary.totalSolidSupports || 0}`
+    );
+  }
+
+  if (Array.isArray(userDeltas) && userDeltas.length > 0) {
+    const recent = userDeltas.slice(-12);
+    lines.push('4. **LETZTE MANUELLE USER-ÄNDERUNGEN im CAD Studio (ZWINGEND BEACHTEN!):**');
+    for (const delta of recent) {
+      lines.push(`   - ${delta}`);
+    }
+    lines.push('   -> WICHTIG: Überschreibe diese manuellen Edits des Benutzers NICHT, sondern integriere sie harmonisch!');
+  }
+
+  return lines.join('\n');
+}
+
+export function createSettlementLayoutPrompt(instruction, sceneContext, availableSchematics = []) {
+  const digest = createSpatialSceneContextDigest(sceneContext);
+  const schemList = availableSchematics.map(s => `- ${s.name}`).join('\n') || '- mittelalter_haus.schem';
+  return `
+Du bist der KI-Siedlungs- & Stadtplaner im Minecraft CAD World Studio.
+Benutzer-Auftrag: "${instruction}"
+
+${digest}
+
+Verfügbare Schematics in der Bibliothek:
+${schemList}
+
+Analysiere die Gelände-Topologie und die bereits platzierten Objekte im Scene Graph.
+Erstelle einen präzisen JSON-Plan zur optimalen Platzierung/Ausrichtung der bestehenden Objekte (und optional neuer Gebäude), sodass:
+- Keine Gebäude miteinander kollidieren (mindestens 4 Blöcke Abstand für Dorfwege),
+- Gebäude zum Dorfzentrum oder zu Wegen hin ausgerichtet sind ('north', 'east', 'south', 'west'),
+- Wasserflächen gemieden werden.
+
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format:
+{
+  "summary": "Kurze Erklärung des städtebaulichen Layouts (1-2 Sätze)",
+  "repositionExisting": [
+    { "id": "obj_id", "x": 10, "y": 65, "z": -12, "facing": "south", "rotation": 180, "reason": "Blick zum Marktplatz" }
+  ],
+  "locations": [],
+  "connectPaths": true
+}
+`.trim();
+}
+

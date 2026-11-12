@@ -1,6 +1,7 @@
 import { Vec3 } from 'vec3';
 import { logger } from '../../../utils/logger.js';
 import { manualController } from '../../../bot/manualController.js';
+import { buildPlayersList, buildTablistData } from '../../services/dashboardTelemetryService.js';
 
 const GAMEMODE_WS_TYPES = new Set([
   'toggle_manual_control',
@@ -12,7 +13,9 @@ const GAMEMODE_WS_TYPES = new Set([
   'inventory_click',
   'close_window',
   'respawn',
-  'clear_movement'
+  'clear_movement',
+  'request_player_list',
+  'request_tablist'
 ]);
 
 /**
@@ -208,6 +211,19 @@ export async function handleGamemodeWsMessage(data, ws, context) {
   // Emergency / window blur / pointer lock exit control clearing
   if (type === 'clear_movement') {
     manualController.clearControls();
+    return true;
+  }
+
+  // Real-time server player tablist query
+  if (type === 'request_player_list' || type === 'request_tablist') {
+    const payload = {
+      type: 'player_list',
+      players: buildPlayersList(context?.currentBot),
+      tablist: buildTablistData(context?.currentBot)
+    };
+    if (ws && typeof ws.send === 'function') {
+      ws.send(JSON.stringify(payload));
+    }
     return true;
   }
 

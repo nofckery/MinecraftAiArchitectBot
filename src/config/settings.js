@@ -29,6 +29,7 @@ export const settings = {
   MC_AUTH: (process.env.MC_AUTH || 'offline').trim(),
   MC_VERSION: VersionResolver.normalizeVersion(process.env.MC_VERSION),
   BOT_OWNER: (process.env.BOT_OWNER || '').trim(),
+  ENABLE_MINECRAFT_CHAT: parseBoolean(process.env.ENABLE_MINECRAFT_CHAT, true),
 
   // Onboarding & Lifecycle Steuerung
   ONBOARDING_COMPLETED: parseBoolean(process.env.ONBOARDING_COMPLETED, false),
@@ -48,7 +49,7 @@ export const settings = {
   SURVIVAL_RETREAT_DISTANCE: parseInteger(process.env.SURVIVAL_RETREAT_DISTANCE, 15),
   SURVIVAL_ATTACK_COOLDOWN_MS: parseInteger(process.env.SURVIVAL_ATTACK_COOLDOWN_MS, 625),
   BED_SEARCH_RADIUS: parseInteger(process.env.BED_SEARCH_RADIUS, 32),
-  SLEEP_DISCONNECT_ON_NO_BED: parseBoolean(process.env.SLEEP_DISCONNECT_ON_NO_BED, true),
+  SLEEP_DISCONNECT_ON_NO_BED: parseBoolean(process.env.SLEEP_DISCONNECT_ON_NO_BED, false),
   SLEEP_RECONNECT_DELAY_SEC: parseInteger(process.env.SLEEP_RECONNECT_DELAY_SEC, 25),
   SURVIVAL_SCAFFOLDING_ENABLED: parseBoolean(process.env.SURVIVAL_SCAFFOLDING_ENABLED, true),
   SURVIVAL_SCAFFOLD_BLOCKS: process.env.SURVIVAL_SCAFFOLD_BLOCKS || 'scaffolding,dirt,coarse_dirt,cobblestone,netherrack',
@@ -121,6 +122,7 @@ export const settings = {
 
   // Mission Control Web-UI & 1-Account Session-Handoff
   WEB_DASHBOARD_PORT: parseInteger(process.env.WEB_DASHBOARD_PORT, 3080),
+  ENABLE_PRISMARINE_VIEWER: parseBoolean(process.env.ENABLE_PRISMARINE_VIEWER, true),
   PRISMARINE_VIEWER_PORT: parseInteger(process.env.PRISMARINE_VIEWER_PORT, 3081),
   DASHBOARD_PASSWORD: (process.env.DASHBOARD_PASSWORD || '').trim(),
   SINGLE_ACCOUNT_HANDOFF_MODE: parseBoolean(process.env.SINGLE_ACCOUNT_HANDOFF_MODE, true),

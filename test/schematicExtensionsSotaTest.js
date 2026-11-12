@@ -235,6 +235,27 @@ async function runSchematicExtensionsSuite() {
     assert(chatMessage.includes('entladen'), 'Chat-Rückmeldung zu entladen');
   });
 
+  await testAsync('5.4 Multi-Format Schematic Parsing (.litematic, .schematic, .schem, .nbt)', async () => {
+    const schemsToTest = [
+      { file: 'windmill.litematic', minBlocks: 1000 },
+      { file: 'large_survival_house.litematic', minBlocks: 5000 },
+      { file: 'arch_sandstone.litematic', minBlocks: 100 },
+      { file: 'great_library.schematic', minBlocks: 10000 },
+      { file: 'test_api_export.schem', minBlocks: 2 },
+      { file: 'unit_test_structure.nbt', minBlocks: 2 }
+    ];
+
+    for (const item of schemsToTest) {
+      const p = path.resolve('data/schematics', item.file);
+      if (!fs.existsSync(p)) continue;
+      const buf = fs.readFileSync(p);
+      const canvas = await schematicManager.loadIntoCanvas(buf, item.file);
+      const bounds = canvas.getBounds();
+      assert(bounds.width > 0 && bounds.height > 0 && bounds.depth > 0, `${item.file} hat valide Dimensionen`);
+      assert(canvas.blocks.size >= item.minBlocks, `${item.file} hat mindestens ${item.minBlocks} Blöcke (ist: ${canvas.blocks.size})`);
+    }
+  });
+
   console.log('\n================================================================');
   console.log(`  ERGEBNIS: ${passed} / ${total} TESTS ERFOLGREICH BESTANDEN!`);
   console.log('  Alle Schematic- & Survival-Erweiterungen 100% verifiziert!');

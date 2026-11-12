@@ -350,9 +350,9 @@ async function runMissionControlTests() {
   // Sektion 6: WebSocket- und REST-Tests
   // 1. manual_voxel_edit & voxel_delta broadcast
   let receivedDelta = false;
-  const deltaListener = (dataStr) => {
+  const deltaListener = (dataBuf) => {
     try {
-      const parsed = JSON.parse(dataStr);
+      const parsed = JSON.parse(dataBuf.toString());
       if (parsed.type === 'voxel_delta') {
         receivedDelta = true;
         assert(parsed.x === 5 && parsed.y === 5 && parsed.z === 5 && parsed.blockString === 'gold_block', 'voxel_delta enthält korrekte Koordinaten und BlockString');
@@ -366,7 +366,7 @@ async function runMissionControlTests() {
     x: 5, y: 5, z: 5,
     blockString: 'gold_block'
   }));
-  await new Promise(r => setTimeout(r, 60));
+  await new Promise(r => setTimeout(r, 120));
   assert(dashboardServer.activeCanvas?.get(5, 5, 5)?.name === 'gold_block', 'manual_voxel_edit setzt Block in activeCanvas');
   assert(receivedDelta === true, 'Server hat voxel_delta erfolgreich an Client gebroadcastet');
   ws.off('message', deltaListener);

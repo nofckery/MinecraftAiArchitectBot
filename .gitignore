@@ -30,6 +30,7 @@ data/*.vault
 test/fixtures/*.vault
 data/endpoints.json
 data/test_*
+data/waypoints.json
 
 
 # ==============================================================================

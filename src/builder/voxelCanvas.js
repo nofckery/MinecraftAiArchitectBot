@@ -1,5 +1,4 @@
 import minecraftData from 'minecraft-data';
-import { rotateProperties, mirrorProperties, autoStitchStairs, rotateFacing } from './stateTransform.js';
 
 const DEFAULT_MC_DATA = minecraftData('1.20.4');
 
@@ -8,6 +7,10 @@ import { normalizeBlockName } from './blockAliases.js';
 import { computeGreedyBoxes, toBlockString } from './greedyMesher.js';
 import { swapMaterial } from './paletteSwapper.js';
 import { computeDiff } from './canvasDiff.js';
+import { drawBresenhamLine } from './canvas/bresenhamLine.js';
+import { finalizeMultiBlocks } from './canvas/multiBlockFinalizer.js';
+import { applySymmetryOrTransform } from './canvas/canvasTransform.js';
+import { createSubRegionProxy } from './canvas/subRegionProxy.js';
 
 export class VoxelCanvas {
   constructor(width = 32, height = 32, depth = 32, origin = { x: 0, y: 0, z: 0 }, facing = 'north', mcData = null) {
@@ -179,75 +182,7 @@ export class VoxelCanvas {
   }
 
   line(x1, y1, z1, x2, y2, z2, blockInput) {
-    this.incOps();
-    let x = Math.floor(x1);
-    let y = Math.floor(y1);
-    let z = Math.floor(z1);
-    const targetX = Math.floor(x2);
-    const targetY = Math.floor(y2);
-    const targetZ = Math.floor(z2);
-
-    const dx = Math.abs(targetX - x);
-    const dy = Math.abs(targetY - y);
-    const dz = Math.abs(targetZ - z);
-    const xs = targetX > x ? 1 : -1;
-    const ys = targetY > y ? 1 : -1;
-    const zs = targetZ > z ? 1 : -1;
-
-    // 3D Bresenham Line
-    if (dx >= dy && dx >= dz) {
-      let p1 = 2 * dy - dx;
-      let p2 = 2 * dz - dx;
-      while (x !== targetX) {
-        this.set(x, y, z, blockInput);
-        x += xs;
-        if (p1 >= 0) {
-          y += ys;
-          p1 -= 2 * dx;
-        }
-        if (p2 >= 0) {
-          z += zs;
-          p2 -= 2 * dx;
-        }
-        p1 += 2 * dy;
-        p2 += 2 * dz;
-      }
-    } else if (dy >= dx && dy >= dz) {
-      let p1 = 2 * dx - dy;
-      let p2 = 2 * dz - dy;
-      while (y !== targetY) {
-        this.set(x, y, z, blockInput);
-        y += ys;
-        if (p1 >= 0) {
-          x += xs;
-          p1 -= 2 * dy;
-        }
-        if (p2 >= 0) {
-          z += zs;
-          p2 -= 2 * dy;
-        }
-        p1 += 2 * dx;
-        p2 += 2 * dz;
-      }
-    } else {
-      let p1 = 2 * dy - dz;
-      let p2 = 2 * dx - dz;
-      while (z !== targetZ) {
-        this.set(x, y, z, blockInput);
-        z += zs;
-        if (p1 >= 0) {
-          y += ys;
-          p1 -= 2 * dz;
-        }
-        if (p2 >= 0) {
-          x += xs;
-          p2 -= 2 * dz;
-        }
-        p1 += 2 * dy;
-        p2 += 2 * dx;
-      }
-    }
-    this.set(targetX, targetY, targetZ, blockInput);
+    drawBresenhamLine(this, x1, y1, z1, x2, y2, z2, blockInput);
   }
 
   cylinder(cx, y1, cz, radius, height, blockInput, hollow = false) {
@@ -278,73 +213,7 @@ export class VoxelCanvas {
   }
 
   finalizeMultiBlocks() {
-    const keys = this.getAllBlockKeys();
-
-    for (const key of keys) {
-      const block = this.blocks.get(key);
-      if (!block) continue;
-      const { x, y, z } = this.parseKey(key);
-
-      // 1. Automatische Türenvervollständigung (Door upper half)
-      if (block.name.endsWith('_door')) {
-        const props = block.properties || {};
-        const half = props.half || 'lower';
-        if (half === 'lower') {
-          const upperKey = this.makeKey(x, y + 1, z);
-          const upperBlock = this.blocks.get(upperKey);
-          if (!upperBlock || !upperBlock.name.endsWith('_door')) {
-            this.blocks.set(upperKey, {
-              name: block.name,
-              properties: {
-                facing: props.facing || 'north',
-                half: 'upper',
-                hinge: props.hinge || 'left',
-                open: props.open || 'false',
-                powered: props.powered || 'false'
-              }
-            });
-          }
-        }
-      }
-
-      // 2. Wandfackeln (Wandprüfung, wenn kein solider Block darunter ist)
-      if (block.name === 'torch' || block.name === 'soul_torch') {
-        const isSoul = block.name.startsWith('soul_');
-        const belowBlock = this.get(x, y - 1, z);
-        const hasSolidFloor = belowBlock && !belowBlock.name.includes('air') &&
-                              !belowBlock.name.includes('pane') &&
-                              !belowBlock.name.includes('fence') &&
-                              !belowBlock.name.includes('wall');
-
-        if (!hasSolidFloor) {
-          // Prüfe horizontale Nachbarn nach einer Stützwand
-          const neighbors = [
-            { dir: 'north', checkX: x, checkZ: z - 1, faceAway: 'south' },
-            { dir: 'south', checkX: x, checkZ: z + 1, faceAway: 'north' },
-            { dir: 'west',  checkX: x - 1, checkZ: z, faceAway: 'east' },
-            { dir: 'east',  checkX: x + 1, checkZ: z, faceAway: 'west' }
-          ];
-
-          let attached = false;
-          for (const n of neighbors) {
-            const wallBlock = this.get(n.checkX, y, n.checkZ);
-            if (wallBlock && !wallBlock.name.includes('air') &&
-                !wallBlock.name.includes('pane') &&
-                !wallBlock.name.includes('slab')) {
-              block.name = isSoul ? 'soul_wall_torch' : 'wall_torch';
-              block.properties = { facing: n.faceAway };
-              attached = true;
-              break;
-            }
-          }
-
-          if (!attached && !hasSolidFloor) {
-            // Falls frei in der Luft, markieren
-            this.validationErrors.push(`Schwebende Fackel bei (${x},${y},${z}) ohne Stützwand oder Boden.`);
-          }
-        }
-      }
-    }
+    finalizeMultiBlocks(this);
   }
 
   static toBlockString(blockStateObj) {
@@ -399,180 +268,10 @@ export class VoxelCanvas {
   }
 
   applySymmetryOrTransform(mode) {
-    const bounds = this.getBounds();
-    if (bounds.count === 0) return;
-
-    const newBlocks = new Map();
-
-    for (const [key, block] of this.blocks.entries()) {
-      const { x, y, z } = this.parseKey(key);
-      let newX = x;
-      let newY = y;
-      let newZ = z;
-      let newProps = { ...(block.properties || {}) };
-
-      if (mode === 'rotate_90_cw') {
-        newX = bounds.minX + (bounds.maxZ - z);
-        newZ = bounds.minZ + (x - bounds.minX);
-        newProps = rotateProperties(newProps, 1);
-      } else if (mode === 'mirror_x') {
-        newX = bounds.minX + bounds.maxX - x;
-        newProps = mirrorProperties(newProps, 'x');
-      } else if (mode === 'mirror_z') {
-        newZ = bounds.minZ + bounds.maxZ - z;
-        newProps = mirrorProperties(newProps, 'z');
-      } else if (mode === 'shift_y_up') {
-        newY = y + 1;
-      } else if (mode === 'shift_y_down') {
-        newY = y - 1;
-      }
-
-      const newKey = this.makeKey(newX, newY, newZ);
-      newBlocks.set(newKey, {
-        name: block.name,
-        properties: newProps
-      });
-    }
-
-    this.blocks = newBlocks;
-
-    if (mode === 'rotate_90_cw') {
-      const tempW = this.width;
-      this.width = this.depth;
-      this.depth = tempW;
-      if (typeof rotateFacing === 'function') {
-        this.facing = rotateFacing(this.facing || 'north', 1);
-      }
-    }
-
-    const newBounds = this.getBounds();
-    if (newBounds.count > 0) {
-      this.width = Math.max(this.width, newBounds.width);
-      this.height = Math.max(this.height, newBounds.height);
-      this.depth = Math.max(this.depth, newBounds.depth);
-    }
-
-    autoStitchStairs(this);
+    applySymmetryOrTransform(this, mode);
   }
 
   createSubRegionProxy(selectionBox) {
-    const minX = Math.min(selectionBox.minX, selectionBox.maxX);
-    const maxX = Math.max(selectionBox.minX, selectionBox.maxX);
-    const minY = Math.min(selectionBox.minY, selectionBox.maxY);
-    const maxY = Math.max(selectionBox.minY, selectionBox.maxY);
-    const minZ = Math.min(selectionBox.minZ, selectionBox.maxZ);
-    const maxZ = Math.max(selectionBox.minZ, selectionBox.maxZ);
-
-    const isInside = (x, y, z) => {
-      return x >= minX && x <= maxX &&
-             y >= minY && y <= maxY &&
-             z >= minZ && z <= maxZ;
-    };
-
-    const targetCanvas = this;
-
-    const handler = {
-      get(target, prop, receiver) {
-        if (prop === 'isSubRegionProxy') return true;
-        if (prop === 'selectionBox') return { minX, minY, minZ, maxX, maxY, maxZ };
-
-        if (prop === 'set') {
-          return (x, y, z, blockInput) => {
-            const ix = Math.floor(x);
-            const iy = Math.floor(y);
-            const iz = Math.floor(z);
-            if (isInside(ix, iy, iz)) {
-              return target.set(ix, iy, iz, blockInput);
-            }
-            return false;
-          };
-        }
-
-        if (prop === 'box') {
-          return (x1, y1, z1, x2, y2, z2, blockInput, hollow = false) => {
-            const bMinX = Math.min(Math.floor(x1), Math.floor(x2));
-            const bMaxX = Math.max(Math.floor(x1), Math.floor(x2));
-            const bMinY = Math.min(Math.floor(y1), Math.floor(y2));
-            const bMaxY = Math.max(Math.floor(y1), Math.floor(y2));
-            const bMinZ = Math.min(Math.floor(z1), Math.floor(z2));
-            const bMaxZ = Math.max(Math.floor(z1), Math.floor(z2));
-
-            const startX = Math.max(bMinX, minX);
-            const endX = Math.min(bMaxX, maxX);
-            const startY = Math.max(bMinY, minY);
-            const endY = Math.min(bMaxY, maxY);
-            const startZ = Math.max(bMinZ, minZ);
-            const endZ = Math.min(bMaxZ, maxZ);
-
-            if (startX > endX || startY > endY || startZ > endZ) return;
-
-            target.incOps();
-            for (let x = startX; x <= endX; x++) {
-              for (let y = startY; y <= endY; y++) {
-                for (let z = startZ; z <= endZ; z++) {
-                  if (hollow) {
-                    const isEdge = (x === bMinX || x === bMaxX ||
-                                    y === bMinY || y === bMaxY ||
-                                    z === bMinZ || z === bMaxZ);
-                    if (!isEdge) {
-                      target.set(x, y, z, 'air');
-                      continue;
-                    }
-                  }
-                  target.set(x, y, z, blockInput);
-                }
-              }
-            }
-          };
-        }
-
-        if (prop === 'clear') {
-          return (x1, y1, z1, x2, y2, z2) => {
-            const cX1 = Math.max(Math.min(Math.floor(x1), Math.floor(x2)), minX);
-            const cX2 = Math.min(Math.max(Math.floor(x1), Math.floor(x2)), maxX);
-            const cY1 = Math.max(Math.min(Math.floor(y1), Math.floor(y2)), minY);
-            const cY2 = Math.min(Math.max(Math.floor(y1), Math.floor(y2)), maxY);
-            const cZ1 = Math.max(Math.min(Math.floor(z1), Math.floor(z2)), minZ);
-            const cZ2 = Math.min(Math.max(Math.floor(z1), Math.floor(z2)), maxZ);
-            if (cX1 <= cX2 && cY1 <= cY2 && cZ1 <= cZ2) {
-              return target.clear(cX1, cY1, cZ1, cX2, cY2, cZ2);
-            }
-          };
-        }
-
-        if (prop === 'swapMaterial') {
-          return (fromB, toB, smartGroup = false) => {
-            const insideKeys = [];
-            for (const key of target.getAllBlockKeys()) {
-              const { x, y, z } = target.parseKey(key);
-              if (isInside(x, y, z)) {
-                insideKeys.push(key);
-              }
-            }
-            const subCanvas = new VoxelCanvas(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1);
-            for (const key of insideKeys) {
-              const blk = target.getByKey(key);
-              subCanvas.blocks.set(key, { name: blk.name, properties: { ...(blk.properties || {}) } });
-            }
-            const count = subCanvas.swapMaterial(fromB, toB, smartGroup);
-            for (const key of insideKeys) {
-              const updated = subCanvas.getByKey(key);
-              if (updated) {
-                target.blocks.set(key, updated);
-              }
-            }
-            return count;
-          };
-        }
-
-        const orig = Reflect.get(target, prop, receiver);
-        if (typeof orig === 'function') {
-          return (...args) => orig.apply(receiver, args);
-        }
-        return orig;
-      }
-    };
-
-    return new Proxy(targetCanvas, handler);
+    return createSubRegionProxy(this, selectionBox);
   }
 }

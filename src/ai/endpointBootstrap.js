@@ -1,4 +1,5 @@
 import { settings as defaultSettings } from '../config/settings.js';
+import { inferModelCapabilities } from './modelKnowledgeBase.js';
 
 /**
  * Builds the bootstrap endpoint catalog from environment configuration and seeds keys into CredentialVault.
@@ -67,6 +68,14 @@ export async function buildBootstrapEndpoints(vault, customSettings, options = {
     if (epOptions.dailyRequestLimit) {
       ep.dailyRequestLimit = epOptions.dailyRequestLimit;
     }
+
+    const inferred = inferModelCapabilities(modelId, provider);
+    ep.capabilities = epOptions.capabilities || inferred.capabilities;
+    ep.isFreeTier = epOptions.isFreeTier !== undefined ? Boolean(epOptions.isFreeTier) : inferred.isFreeTier;
+    ep.costPer1MInput = epOptions.costPer1MInput ?? inferred.costPer1MInput;
+    ep.costPer1MOutput = epOptions.costPer1MOutput ?? inferred.costPer1MOutput;
+    ep.tierRecommendation = epOptions.tierRecommendation || inferred.tierRecommendation;
+    ep.roles = Array.isArray(epOptions.roles) ? epOptions.roles : [ep.tierRecommendation];
 
     newEndpoints.push(ep);
   };

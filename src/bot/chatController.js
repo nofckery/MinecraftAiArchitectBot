@@ -14,6 +14,15 @@ import { schematicManager } from '../builder/schematicManager.js';
 import { StructuralLinter } from '../builder/structuralLinter.js';
 
 import { inventoryManager } from './inventoryManager.js';
+import { envManager } from '../config/envManager.js';
+import { dashboardServer } from '../web/dashboardServer.js';
+import { taskIntentRouter, TASK_INTENTS } from '../ai/router/taskIntentRouter.js';
+import { guardManager } from './guardManager.js';
+import { harvestManager } from '../survival/harvestManager.js';
+import { craftingPlanner } from '../survival/craftingPlanner.js';
+import { smeltingManager } from '../survival/smeltingManager.js';
+import { baseStorageManager } from '../survival/baseStorageManager.js';
+import { expeditionManager } from '../survival/expeditionManager.js';
 
 export class ChatController {
   constructor(bot, architectAgent) {
@@ -51,10 +60,158 @@ export class ChatController {
 
     // --- SCHNELLBEFEHLE ---
 
+    if (text === '!mute' || text === '!silent' || text === '!chat off') {
+      if (settings.ENABLE_MINECRAFT_CHAT) {
+        try {
+          this.bot.chat('Minecraft-Chat ist jetzt DEAKTIVIERT (Stiller Modus: Ausgaben nur noch im Web-Dashboard).');
+        } catch {}
+      }
+      settings.ENABLE_MINECRAFT_CHAT = false;
+      envManager.saveConfig({ ENABLE_MINECRAFT_CHAT: false });
+      dashboardServer.broadcast({
+        type: 'settings_updated',
+        settings: envManager.getCurrentSettings()
+      });
+      return;
+    }
+
+    if (text === '!unmute' || text === '!chat on') {
+      settings.ENABLE_MINECRAFT_CHAT = true;
+      envManager.saveConfig({ ENABLE_MINECRAFT_CHAT: true });
+      dashboardServer.broadcast({
+        type: 'settings_updated',
+        settings: envManager.getCurrentSettings()
+      });
+      this.bot.chat('Minecraft-Chat ist jetzt AKTIVIERT.');
+      return;
+    }
+
+    if (text === '!chat' || text === '!chat toggle') {
+      const nextState = !settings.ENABLE_MINECRAFT_CHAT;
+      if (nextState) {
+        settings.ENABLE_MINECRAFT_CHAT = true;
+        envManager.saveConfig({ ENABLE_MINECRAFT_CHAT: true });
+        dashboardServer.broadcast({
+          type: 'settings_updated',
+          settings: envManager.getCurrentSettings()
+        });
+        this.bot.chat('Minecraft-Chat ist jetzt AKTIVIERT.');
+      } else {
+        try {
+          this.bot.chat('Minecraft-Chat ist jetzt DEAKTIVIERT (Stiller Modus: Ausgaben nur noch im Web-Dashboard).');
+        } catch {}
+        settings.ENABLE_MINECRAFT_CHAT = false;
+        envManager.saveConfig({ ENABLE_MINECRAFT_CHAT: false });
+        dashboardServer.broadcast({
+          type: 'settings_updated',
+          settings: envManager.getCurrentSettings()
+        });
+      }
+      return;
+    }
+
     if (text === '!stop') {
       worldExecutor.abort();
+      guardManager.stopGuarding();
+      harvestManager.abort();
+      expeditionManager.abort();
+      smeltingManager.abort();
+      if (this.bot.pathfinder) {
+        try { this.bot.pathfinder.stop(); } catch {}
+      }
       this.isBuilding = false;
-      this.bot.chat('Bauprozess sofort abgebrochen.');
+      this.bot.chat('Alle aktiven Aufträge (Bau, Mining, Wachdienst) sofort abgebrochen.');
+      return;
+    }
+
+    if (text === '!sethome') {
+      const pos = this.bot.entity?.position;
+      if (pos) {
+        const home = baseStorageManager.setHome(pos);
+        this.bot.chat(`Heimatbasis erfolgreich gespeichert bei (${home.x}, ${home.y}, ${home.z})!`);
+      } else {
+        this.bot.chat('Konnte Bot-Position nicht ermitteln.');
+      }
+      return;
+    }
+
+    if (text === '!home') {
+      const home = baseStorageManager.getHome();
+      if (!home) {
+        this.bot.chat('Noch keine Heimatbasis festgelegt! Setze sie zuerst mit !sethome.');
+        return;
+      }
+      this.bot.chat(`Kehre zur Basis zurück (${home.x}, ${home.y}, ${home.z})...`);
+      if (this.bot.pathfinder) {
+        try {
+          const { goals } = await import('mineflayer-pathfinder');
+          await this.bot.pathfinder.goto(new goals.GoalNear(home.x, home.y, home.z, 2));
+          this.bot.chat('Zuhause an der Basis angekommen!');
+        } catch (err) {
+          this.bot.chat(`Fehler bei Heimreise: ${err.message}`);
+        }
+      }
+      return;
+    }
+
+    if (text.startsWith('!expedition')) {
+      const parts = text.split(/\s+/);
+      const res = parts[1] || 'iron_ore';
+      const amount = parts[2] ? parseInt(parts[2], 10) : 32;
+      this.bot.chat(`Starte Höhlen-Expedition nach ${amount}x ${res}...`);
+      (async () => {
+        const result = await expeditionManager.startExpedition(this.bot, {
+          targetResource: res,
+          targetAmount: amount
+        });
+        if (result.success) {
+          this.bot.chat(`Höhlen-Expedition beendet! ${result.stats?.oresMined || 0} Erze abgebaut, ${result.stats?.torchesPlaced || 0} Fackeln gesetzt, sicher zurückgekehrt.`);
+        } else {
+          this.bot.chat(`Expedition beendet: ${result.error || 'Abgebrochen'}`);
+        }
+      })();
+      return;
+    }
+
+    if (text.startsWith('!craft')) {
+      const parts = text.split(/\s+/);
+      const item = parts[1] || 'torch';
+      const count = parts[2] ? parseInt(parts[2], 10) : 1;
+      this.bot.chat(`Starte Auto-Crafting für ${count}x ${item}...`);
+      (async () => {
+        const result = await craftingPlanner.craftItem(this.bot, item, count);
+        if (result.success) {
+          this.bot.chat(`Erfolgreich hergestellt: ${result.crafted}x ${result.itemName}!`);
+        } else {
+          this.bot.chat(`Crafting fehlgeschlagen: ${result.error}`);
+        }
+      })();
+      return;
+    }
+
+    if (text === '!smelt') {
+      this.bot.chat('Starte Verhüttung von Roherzen im Ofen...');
+      (async () => {
+        const result = await smeltingManager.smeltMaterials(this.bot);
+        if (result.success) {
+          this.bot.chat(`Verhüttung abgeschlossen: ${result.totalSmelted} Einheiten geschmolzen.`);
+        } else {
+          this.bot.chat(`Schmelzen beendet: ${result.error || result.message}`);
+        }
+      })();
+      return;
+    }
+
+    if (text === '!deposit') {
+      this.bot.chat('Sortiere Schätze und Beute in Basiskisten ein...');
+      (async () => {
+        const result = await baseStorageManager.depositLoot(this.bot);
+        if (result.success) {
+          this.bot.chat(`Erfolgreich eingelagert: ${result.depositedCount} Gegenstände in Basiskisten.`);
+        } else {
+          this.bot.chat(`Einlagern beendet: ${result.error || result.message}`);
+        }
+      })();
       return;
     }
 
@@ -308,7 +465,97 @@ export class ChatController {
       return;
     }
 
-    // 2. Neuer Bauauftrag oder Modifikation
+    // 2. Universelle Intent-Klassifizierung (Gameplay vs. Architektur)
+    const classified = await taskIntentRouter.classifyIntent(text);
+
+    if (classified.intent === TASK_INTENTS.STOP) {
+      worldExecutor.abort();
+      guardManager.stopGuarding();
+      harvestManager.abort();
+      expeditionManager.abort();
+      smeltingManager.abort();
+      if (this.bot.pathfinder) {
+        try { this.bot.pathfinder.stop(); } catch {}
+      }
+      this.isBuilding = false;
+      this.bot.chat('Not-Stopp ausgeführt! Alle aktiven Aufgaben abgebrochen.');
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.SETHOME) {
+      await this.handleMessage(username, '!sethome');
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.HOME) {
+      await this.handleMessage(username, '!home');
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.EXPEDITION) {
+      const resource = classified.resource || 'iron_ore';
+      const amount = classified.amount || 32;
+      await this.handleMessage(username, `!expedition ${resource} ${amount}`);
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.CRAFT) {
+      const item = classified.item || 'torch';
+      const count = classified.count || 1;
+      await this.handleMessage(username, `!craft ${item} ${count}`);
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.SMELT) {
+      await this.handleMessage(username, '!smelt');
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.DEPOSIT) {
+      await this.handleMessage(username, '!deposit');
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.DEFEND) {
+      const player = this.bot.players[username]?.entity;
+      const center = player?.position ? player.position.clone() : this.bot.entity?.position;
+      const radius = classified.radius || 20;
+      await guardManager.startGuarding(this.bot, center, radius, { chatAlerts: true });
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.MINE) {
+      const resource = classified.resource || 'iron_ore';
+      const amount = classified.amount || 32;
+      const radius = classified.radius || 24;
+
+      if (resource.includes('log') || resource === 'wood') {
+        await harvestManager.harvestWood(this.bot, resource === 'wood' ? 'any' : resource, amount, radius);
+      } else if (resource === 'stone') {
+        await harvestManager.harvestStone(this.bot, amount, radius);
+      } else {
+        await harvestManager.harvestOres(this.bot, resource, amount, radius, { chatAlerts: true });
+      }
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.FOLLOW) {
+      await this.handleMessage(username, '!come');
+      return;
+    }
+
+    if (classified.intent === TASK_INTENTS.STATUS) {
+      const hp = this.bot.health ?? '?';
+      const food = this.bot.food ?? '?';
+      const guardStatus = guardManager.getStatus();
+      const activeTask = guardStatus.isGuarding
+        ? `Wachdienst (Radius: ${guardStatus.guardRadius}m, Kills: ${guardStatus.defeatedCount})`
+        : (harvestManager.isHarvesting ? 'Mining' : (this.isBuilding ? 'Bauauftrag' : 'Bereit (Standby)'));
+      this.bot.chat(`[Status] HP: ${hp}/20 | Hunger: ${food}/20 | Aktiv: ${activeTask}`);
+      return;
+    }
+
+    // 3. Neuer Bauauftrag oder Modifikation
     if (this.isBuilding) {
       this.bot.chat('Ich baue gerade noch! Tippe !stop, falls ich abbrechen soll.');
       return;

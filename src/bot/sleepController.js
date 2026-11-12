@@ -19,6 +19,7 @@ export class SleepController {
     this.reconnectTimer = null;
     this.checkInterval = null;
     this.wasBuildingBeforeSleep = false;
+    this.wasDisconnectedForNight = false;
     this.chatListener = null;
     this.entityUpdateListener = null;
     this.wakeListener = null;
@@ -229,13 +230,13 @@ export class SleepController {
     } else {
       // Kein Bett in Reichweite gefunden
       const othersSleeping = this.isOtherPlayerSleeping();
-      const disconnectAllowed = settings.SLEEP_DISCONNECT_ON_NO_BED;
+      const disconnectAllowed = Boolean(settings.SLEEP_DISCONNECT_ON_NO_BED);
 
-      if (othersSleeping || (this.isNight() && disconnectAllowed)) {
+      if (disconnectAllowed && (othersSleeping || this.isNight())) {
         logger.warn('[SleepController] Kein freies Bett erreichbar, während Nacht herrscht oder andere schlafen.');
         await this.disconnectForNight();
       } else {
-        logger.info('[SleepController] Kein Bett gefunden, aber noch keine Notwendigkeit für Disconnect.');
+        logger.info('[SleepController] Kein freies Bett gefunden, Serververlassen für die Nacht ist deaktiviert oder nicht erforderlich.');
       }
     }
   }
@@ -289,6 +290,7 @@ export class SleepController {
 
   async onWake() {
     logger.info('[SleepController] Bot ist aufgewacht! Es ist Tag geworden.');
+    this.wasDisconnectedForNight = false;
     this.state = SLEEP_STATES.AWAKE;
     if (sessionHandoff.state === HANDOFF_STATES.PAUSED_SLEEP_NIGHT) {
       sessionHandoff.state = HANDOFF_STATES.ONLINE_ACTIVE;
@@ -306,6 +308,7 @@ export class SleepController {
     if (this.state === SLEEP_STATES.DISCONNECTED_FOR_NIGHT) return;
 
     logger.warn('[SleepController] Führe sauberen Disconnect für die Nacht durch, um andere Spieler nicht zu blockieren.');
+    this.wasDisconnectedForNight = true;
     this.state = SLEEP_STATES.DISCONNECTED_FOR_NIGHT;
     sessionHandoff.state = HANDOFF_STATES.PAUSED_SLEEP_NIGHT;
     sessionHandoff.notifyDashboard({
@@ -364,12 +367,17 @@ export class SleepController {
 
   async onBotSpawn(bot) {
     logger.info('[SleepController] Bot gespawnt, überprüfe Tageszeit...');
+    const wasNightReconnecting = this.wasDisconnectedForNight;
+    this.wasDisconnectedForNight = false;
+
     this.stopMonitoring();
     this.bindEvents();
     this.startMonitoring();
 
-    // Prüfen, ob es immer noch Nacht ist
-    if (this.isNight()) {
+    // Nur wenn der Bot zuvor explizit für den Nacht-Skip getrennt war oder ein Nacht-Reconnect-Zyklus vorlag
+    const isNightReconnect = wasNightReconnecting || (this.wasBuildingBeforeSleep && settings.SLEEP_DISCONNECT_ON_NO_BED);
+
+    if (isNightReconnect && this.isNight()) {
       logger.warn('[SleepController] Nach Reconnect ist immer noch Nacht.');
       const bed = await this.findReachableBed(settings.BED_SEARCH_RADIUS || 32);
       if (bed) {
@@ -380,8 +388,11 @@ export class SleepController {
       return;
     }
 
-    // Es ist Tag! Nacht erfolgreich übersprungen
-    logger.info('[SleepController] Es ist Tag! Nacht erfolgreich überstanden.');
+    if (this.isNight()) {
+      logger.info('[SleepController] Bot gespawnt während Nachtzeit. Serververlassen bei Nacht ist für Start nicht aktiv (oder deaktiviert).');
+    } else {
+      logger.info('[SleepController] Es ist Tag! Nacht erfolgreich überstanden.');
+    }
     this.state = SLEEP_STATES.AWAKE;
     if (sessionHandoff.state === HANDOFF_STATES.PAUSED_SLEEP_NIGHT) {
       sessionHandoff.state = HANDOFF_STATES.ONLINE_ACTIVE;
@@ -395,6 +406,35 @@ export class SleepController {
           logger.error(`[SleepController] Fehler bei Bau-Fortsetzung: ${err.message}`);
         });
       }, 1000);
+    }
+  }
+
+  setNightDisconnectEnabled(enabled) {
+    settings.SLEEP_DISCONNECT_ON_NO_BED = Boolean(enabled);
+    logger.info(`[SleepController] Serververlassen für die Nacht ${settings.SLEEP_DISCONNECT_ON_NO_BED ? 'AKTIVIERT' : 'DEAKTIVIERT'}.`);
+    if (!settings.SLEEP_DISCONNECT_ON_NO_BED && this.state === SLEEP_STATES.DISCONNECTED_FOR_NIGHT) {
+      this.cancelNightDisconnectAndReconnect();
+    }
+    return settings.SLEEP_DISCONNECT_ON_NO_BED;
+  }
+
+  isNightDisconnectEnabled() {
+    return Boolean(settings.SLEEP_DISCONNECT_ON_NO_BED);
+  }
+
+  cancelNightDisconnectAndReconnect() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.wasDisconnectedForNight = false;
+    this.state = SLEEP_STATES.AWAKE;
+    if (sessionHandoff.state === HANDOFF_STATES.PAUSED_SLEEP_NIGHT) {
+      sessionHandoff.state = HANDOFF_STATES.ONLINE_ACTIVE;
+    }
+    if (this.botClient && typeof this.botClient.reconnect === 'function') {
+      logger.info('[SleepController] Nacht-Disconnect deaktiviert oder abgebrochen: Verbinde Bot sofort wieder mit dem Server...');
+      this.botClient.reconnect();
     }
   }
 }

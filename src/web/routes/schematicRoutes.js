@@ -3,9 +3,11 @@ import fs from 'node:fs';
 import { logger } from '../../utils/logger.js';
 import { schematicManager } from '../../builder/schematicManager.js';
 import { StructuralLinter } from '../../builder/structuralLinter.js';
+import { registerCadStudioRoutes } from './cadStudioRoutes.js';
 
 /**
- * Registers schematic REST API routes: listing, upload, URL import, and export.
+ * Registers schematic REST API routes: listing, upload, URL import, export, and download.
+ * Also delegates to registerCadStudioRoutes for backwards compatibility.
  *
  * @param {import('express').Express} app - Express application
  * @param {import('multer').Multer} upload - Multer instance configured for memory storage
@@ -17,7 +19,7 @@ export function registerSchematicRoutes(app, upload, context) {
     fs.mkdirSync(schematicsDir, { recursive: true });
   }
 
-  // Sektion 6: Schematic REST-Endpunkte
+  // 1. List schematics in data/schematics
   app.get('/api/schematics', (req, res) => {
     const dir = path.resolve('data/schematics');
     if (!fs.existsSync(dir)) {
@@ -46,6 +48,7 @@ export function registerSchematicRoutes(app, upload, context) {
     }
   });
 
+  // 2. Upload schematic file
   app.post('/api/schematics/upload', upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
@@ -58,7 +61,6 @@ export function registerSchematicRoutes(app, upload, context) {
       }
 
       const safeFilename = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
-      // Erst validieren und entpacken, bevor die Datei gespeichert wird
       const canvas = await schematicManager.loadIntoCanvas(req.file.buffer, safeFilename);
       context.activeCanvas = canvas;
 
@@ -120,6 +122,7 @@ export function registerSchematicRoutes(app, upload, context) {
     }
   });
 
+  // 3. Import schematic from URL
   app.post('/api/schematics/import-url', async (req, res) => {
     try {
       const { url } = req.body;
@@ -137,7 +140,6 @@ export function registerSchematicRoutes(app, upload, context) {
       let ext = path.extname(filename).toLowerCase();
 
       if (!allowedExts.includes(ext)) {
-        // Prüfe Query-Parameter auf Dateinamen
         for (const val of parsedUrl.searchParams.values()) {
           const paramExt = path.extname(val).toLowerCase();
           if (allowedExts.includes(paramExt)) {
@@ -221,6 +223,7 @@ export function registerSchematicRoutes(app, upload, context) {
     }
   });
 
+  // 4. Export active canvas as .schem or .nbt
   app.get('/api/schematics/export/:name', async (req, res) => {
     try {
       const canvas = context.activeCanvas || context.architectAgent?.lastBuildState?.canvas;
@@ -247,4 +250,19 @@ export function registerSchematicRoutes(app, upload, context) {
       res.status(500).send(`Exportfehler: ${err.message}`);
     }
   });
+
+  // 5. Download schematic from server disk
+  app.get('/api/schematics/download/:filename', (req, res) => {
+    const safeFilename = path.basename(req.params.filename);
+    const fp = path.join(schematicsDir, safeFilename);
+    if (!fs.existsSync(fp)) {
+      return res.status(404).send('Datei nicht gefunden.');
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.sendFile(fp);
+  });
+
+  // CAD Studio Routes registrieren
+  registerCadStudioRoutes(app, context);
 }

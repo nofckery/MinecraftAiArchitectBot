@@ -12,8 +12,11 @@ import { ThreatManager, threatManager } from './threatManager.js';
 import { SleepController, sleepController, SLEEP_STATES } from './sleepController.js';
 import { serverRights } from './serverRights.js';
 import { manualController } from './manualController.js';
+import { guardManager } from './guardManager.js';
+import { harvestManager } from '../survival/harvestManager.js';
 import { inventoryManager } from './inventoryManager.js';
 import { worldExecutor } from '../builder/worldExecutor.js';
+import { classifyKickReason, extractMinecraftChatText } from '../utils/stringUtils.js';
 
 export class BotClient {
   constructor() {
@@ -28,6 +31,9 @@ export class BotClient {
     this.sleepController = sleepController;
     this.sleepController.setBotClient(this);
     this.manualController = manualController;
+    this.state = 'STOPPED';
+    this.lastKickClassification = null;
+    this.lastKickReason = null;
 
     sessionHandoff.setBotClient(this);
     dashboardServer.init(this);
@@ -37,6 +43,8 @@ export class BotClient {
     this.shouldRun = true;
     this.cancelReconnect();
     this.reconnectAttempts = 0;
+    this.lastKickClassification = null;
+    this.lastKickReason = null;
     if (this.bot) {
       try {
         this.bot.quit();
@@ -52,8 +60,12 @@ export class BotClient {
     this.cancelReconnect();
     sessionHandoff.stopPingLoop();
     this.threatManager?.stopMonitoring();
+    guardManager.stopGuarding();
+    harvestManager.abort();
     this.sleepController?.stopMonitoring();
     this.manualController?.deactivate();
+    this.lastKickClassification = null;
+    this.lastKickReason = null;
 
     if (this.bot) {
       try {
@@ -69,6 +81,7 @@ export class BotClient {
   }
 
   broadcastState(state, connected = false) {
+    this.state = state;
     if (dashboardServer && typeof dashboardServer.broadcast === 'function') {
       dashboardServer.broadcast({
         type: 'bot_state_change',
@@ -89,8 +102,11 @@ export class BotClient {
   }
 
   reconnect() {
+    this.shouldRun = true;
     this.cancelReconnect();
     this.reconnectAttempts = 0;
+    this.lastKickClassification = null;
+    this.lastKickReason = null;
     if (this.bot) {
       try {
         this.bot.quit();
@@ -99,6 +115,7 @@ export class BotClient {
       }
       this.bot = null;
     }
+    this.broadcastState('CONNECTING', false);
     this.initBot();
   }
 
@@ -178,13 +195,24 @@ export class BotClient {
     // Server-Rechte dynamisch überwachen
     serverRights.attachToBot(bot);
 
-    // Chat-Hook für Dashboard sicher anbinden (wartet, bis Mineflayer das Chat-Plugin injiziert hat)
+    // Chat-Hook für Dashboard & In-Game-Chat-Toggle sicher anbinden
     const hookChat = () => {
       if (bot.chat && !bot._chatHooked) {
         bot._chatHooked = true;
         const origChat = bot.chat.bind(bot);
+        bot._origChat = origChat;
         bot.chat = (msg) => {
           dashboardServer.recordChat(bot.username || settings.MC_USERNAME, msg);
+
+          // Falls Minecraft In-Game Chat deaktiviert ist:
+          // Normale Chat-Nachrichten (nicht beginnend mit '/') im Server-Chat unterdrücken.
+          // Server-Befehle (beginnend mit '/') für z.B. /setblock in hybrid_visual oder /gamerule weiterhin ausführen!
+          const isCommand = typeof msg === 'string' && msg.trim().startsWith('/');
+          if (!settings.ENABLE_MINECRAFT_CHAT && !isCommand) {
+            logger.debug(`[ChatController] Minecraft In-Game Chat ist stummgeschaltet. Nachricht unterdrückt: "${msg}"`);
+            return;
+          }
+
           return origChat(msg);
         };
       }
@@ -229,15 +257,18 @@ export class BotClient {
 
       sessionHandoff.onBotSpawn(bot);
       dashboardServer.onBotSpawn(bot);
+      this.lastKickClassification = null;
+      this.lastKickReason = null;
       this.broadcastState('ONLINE_ACTIVE', true);
       this.threatManager.setBot(bot);
       this.threatManager.startMonitoring();
+      guardManager.setBot(bot);
       this.manualController.setBot(bot);
       this.sleepController.setBotClient(this);
       this.sleepController.onBotSpawn(bot);
 
       logger.build(`BaumeisterKI bereit! Mission Control Web-UI aktiv auf: http://localhost:${settings.WEB_DASHBOARD_PORT || 3080}`);
-      dashboardServer.recordChat('System', 'BaumeisterKI bereit! Schreibe Bau-Wünsche im Web-Dashboard oder nutze !scan, !preview, !undo, !stop, !instant, !come, !style');
+      dashboardServer.recordChat('System', 'BaumeisterKI bereit! Schreibe Bau-Wünsche im Web-Dashboard oder nutze !scan, !preview, !undo, !stop, !instant, !come, !style, !chat on/off');
     });
 
     bot.on('chat', (username, message) => {
@@ -332,8 +363,44 @@ export class BotClient {
 
     bot.on('kicked', (reason) => {
       this.manualController?.deactivate();
-      const reasonStr = typeof reason === 'object' ? JSON.stringify(reason) : String(reason);
-      logger.warn(`Bot wurde vom Server gekickt: ${reasonStr}`);
+      const classification = classifyKickReason(reason);
+      const cleanReason = classification.cleanText || (typeof reason === 'object' ? JSON.stringify(reason) : String(reason));
+      logger.warn(`Bot wurde vom Server gekickt: ${cleanReason}`);
+
+      // Spezifische Diagnose & Behandlung für Fabric Loader & Fabric API / Mod-Mismatch
+      if (classification.isFabricMismatch) {
+        this.lastKickClassification = classification;
+        this.lastKickReason = cleanReason;
+        logger.warn(`[Fabric Mod-Check] ${classification.title}`);
+        if (classification.relatedNamespaces && classification.relatedNamespaces.length > 0) {
+          logger.warn(`[Fabric Mod-Check] Betroffene Mod-Namespaces auf Server/Host: ${classification.relatedNamespaces.join(', ')}`);
+        }
+        if (classification.detectedInstance) {
+          logger.info(`[Fabric Mod-Check] Erkannte lokale Minecraft-Instanz: ${classification.detectedInstance.name} (${classification.detectedInstance.modsDir})`);
+        }
+        logger.info(`[Fabric Mod-Check] Ursache: BaumeisterKI ist ein Vanilla Node.js/Mineflayer-Bot und kann keine Java Fabric-Client-Mods ausführen.`);
+        logger.info(`[Fabric Mod-Check] LÖSUNG: ${classification.recommendation}`);
+        logger.info(`[Fabric Mod-Check] Download: ${classification.modrinthUrl}`);
+
+        if (dashboardServer && typeof dashboardServer.broadcast === 'function') {
+          dashboardServer.broadcast({
+            type: 'bot_kick_diagnostic',
+            classification,
+            reason: cleanReason
+          });
+          const modsStr = classification.relatedNamespaces?.length ? ` (Mods: ${classification.relatedNamespaces.join(', ')})` : '';
+          dashboardServer.recordChat(
+            'System-Diagnose',
+            `⚠️ Server verlangt Fabric Loader & Fabric API${modsStr}. ${classification.recommendation}`
+          );
+        }
+
+        this.broadcastState('FABRIC_MISMATCH', false);
+        // Statt im 5s/10s Takt endlos zu reconnecten: Cooldown verlangsamen (120s), um Server-Spam zu verhindern
+        this.scheduleReconnect(120000);
+        return;
+      }
+
       if (sessionHandoff.isPaused() || this.sleepController?.state === SLEEP_STATES.DISCONNECTED_FOR_NIGHT) {
         return;
       }
@@ -360,7 +427,16 @@ export class BotClient {
 
     bot.on('end', (reason) => {
       this.manualController?.deactivate();
-      logger.warn(`Verbindung zum Server beendet: ${reason}`);
+      const cleanReason = extractMinecraftChatText(reason) || (typeof reason === 'object' ? JSON.stringify(reason) : String(reason));
+      logger.warn(`Verbindung zum Server beendet: ${cleanReason}`);
+
+      // Falls die Verbindung durch einen Fabric-Mismatch beendet wurde, den Zustand 'FABRIC_MISMATCH'
+      // keinesfalls mit 'RECONNECTING' überschreiben!
+      if (this.state === 'FABRIC_MISMATCH') {
+        this.broadcastState('FABRIC_MISMATCH', false);
+        return;
+      }
+
       this.broadcastState(this.shouldRun ? 'RECONNECTING' : 'STOPPED', false);
       if (sessionHandoff.isPaused() || this.sleepController?.state === SLEEP_STATES.DISCONNECTED_FOR_NIGHT) {
         return;

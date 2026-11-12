@@ -4,7 +4,7 @@
   <img src="https://img.shields.io/badge/Node.js-%3E%3D20.0.0-68a063?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js Version" />
   <img src="https://img.shields.io/badge/Minecraft-1.20.4%20--%2026.3-3d85c6?style=for-the-badge&logo=minecraft&logoColor=white" alt="Minecraft Version" />
   <img src="https://img.shields.io/badge/Protocol-777%20Ready-blueviolet?style=for-the-badge&logo=curseforge&logoColor=white" alt="Protocol 777 Ready" />
-  <img src="https://img.shields.io/badge/Test_Suites-24%2F24%20PASS%20(841%20Tests)-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="841 Tests PASS" />
+  <img src="https://img.shields.io/badge/Test_Suites-33%2F33%20PASS%20%2B%2093%20Tier%20Tests-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white" alt="33 Suites & Tier Tests PASS" />
   <img src="https://img.shields.io/badge/Survival-Autonomous%20v2.1-success?style=for-the-badge&logo=shield&logoColor=white" alt="Survival Ready" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License: MIT" />
 </p>
@@ -167,57 +167,21 @@ Das Projekt ist in modular entkoppelte Schichten unterteilt:
 ```text
 MinecraftAiArchitectBot/
 ├── index.js                      # Haupt-Einstiegspunkt (startet Bot & Dashboard)
-├── package.json                  # Abhängigkeiten, Metadaten und 24 Testskripte
+├── package.json                  # Abhängigkeiten, Metadaten und Testskripte
 ├── .env.example                  # Vollständig dokumentierte Konfigurationsvorlage
 ├── .gitignore                    # Schützt Secrets (.env, .vault, logs) vor Git
 ├── CONTRIBUTING.md               # Richtlinien für Mitwirkende & Freunde
+├── docs/                         # Vertiefende Spezifikationen & Architekturpläne
+│   ├── architecture/             # Master-Spec, Survival- & Expeditions-Design
+│   ├── testing/                  # 4-Tier Test-Architektur & Checklisten
+│   └── specs/                    # CAD-Studio & Dashboard Meilensteine
 ├── data/
 │   ├── schematics/               # Ordner für .schem, .litematic & .nbt Dateien
 │   └── style_memory.json         # Gelernte Baustile und Designmuster
-├── src/
-│   ├── ai/                       # Kognitive Schicht: LLM-Router, Sandbox & Prompts
-│   │   ├── architectAgent.js     # VM-Sandbox für Code-Generierung
-│   │   ├── llmRouter.js          # Multi-Provider Failover Kaskade
-│   │   ├── secretMasker.js       # Sicheres Maskieren von API-Keys in UI/Logs
-│   │   ├── safeProbeWorker.js    # Timeout-sichere Endpunkt-Prüfung
-│   │   └── localModelScanner.js  # Auto-Erkennung von Ollama / LM Studio
-│   ├── bot/                      # Bot-Steuerung & Mineflayer Lifecycle
-│   │   ├── botClient.js          # Verbindung, Events & Server-Rechte
-│   │   ├── chatController.js     # Chatbefehle (!schem, !come, !build etc.)
-│   │   ├── manualController.js   # Gamemode WASD-, Look- & Inventar-Engine
-│   │   ├── manual/               # Gamemode Modularisierung (Raycast, Serializer)
-│   │   └── threatManager.js      # Monster-Erkennung, Schild & Nahkampf
-│   ├── builder/                  # Geometrie & Bau-Engine
-│   │   ├── voxelCanvas.js        # 3D-Voxel-Matrix mit Transformationen
-│   │   ├── structuralLinter.js   # Schwerkraft-, Durchgangs- & Beleuchtungs-Linter
-│   │   ├── blockTopology.js      # Block-Klassifizierung (Solide, Durchlässig)
-│   │   ├── greedyMesher.js       # Quader-Optimierung für /fill Befehle
-│   │   └── worldExecutor.js      # Blockplatzierung & Survival-Ausführung
-│   ├── config/                   # Konfiguration & Versionierung
-│   │   ├── envManager.js         # Sicheres Lesen & atomares Schreiben von .env
-│   │   ├── settings.js           # Zentrale Konfigurationsparameter
-│   │   └── versionResolver.js    # Minecraft 1.20.4 bis 26.3 Protokoll-Adapter
-│   ├── security/                 # Sicherheit & Secrets
-│   │   └── credentialVault.js    # AES-256-GCM verschlüsselter Token-Tresor
-│   ├── survival/                 # Survival-Fähigkeiten
-│   │   ├── chestManager.js       # Behälter-Scan & Inventar-Abgleich
-│   │   ├── harvestManager.js     # Intelligente Werkzeugwahl & Rodung
-│   │   ├── materialProcurement.js# Autonome Materialbeschaffung
-│   │   ├── scaffoldManager.js    # Gerüstbau & sauberer Rückbau
-│   │   └── sleepController.js    # Betten-Suche & Ausweich-Handoff
-│   ├── utils/                    # Allgemeine Hilfsfunktionen
-│   │   ├── fileUtils.js          # Atomare Dateioperationen
-│   │   ├── rateLimiter.js        # Sliding-Window Rate-Limiter für Endpunkte
-│   │   └── logger.js             # Strukturierter Konsolen- & Datei-Logger
-│   ├── web/                      # Mission Control Web-Dashboard & Gamemode
-│   │   ├── dashboardServer.js    # Express HTTP & WebSocket Server
-│   │   ├── public/               # Frontend Assets, CSS, HTML, Three.js
-│   │   │   ├── index.html        # Haupt-Dashboard (Mission Control)
-│   │   │   ├── gamemode.html     # First-Person Gamemode Cockpit
-│   │   │   ├── app.js            # Frontend-Orchestrierung
-│   │   │   └── js/               # Submodule (manualCockpit, threeViewport etc.)
-│   │   ├── routes/               # REST-Endpunkte (Endpoints, Schematics, Setup)
-│   │   ├── services/             # Telemetrie-, Sanitizer- & Viewer-Dienste
+├── src/                          # Vollständiger modulare Quellcode
+├── test/                         # 33 Standardisierte Backend- & System-Testsuiten
+└── tests/                        # Moderne 4-Tier Test-Suite (93 Tests / 706 Checks)
+```
 │   │   └── ws/                   # WebSocket-Dispatcher & Gamemode-Handler
 │   └── world/                    # Wahrnehmung & Undo
 │       ├── worldScanner.js       # Terrain- & Wollmarkierungs-Scanner
@@ -402,13 +366,18 @@ simulation-distance=10
 
 ---
 
-## 8. Testsuite & Qualitätssicherung (24 Suiten, 841 Tests)
+## 8. Testsuite & Qualitätssicherung (33 Standard-Suiten + 4-Tier Testsuite)
 
 Alle Tests laufen **100% offline**, ohne laufenden Minecraft-Server und ohne bezahlte Cloud-API-Keys:
 
 ```bash
-# Gesamte Testsuite ausführen (24 Suiten, 841 Tests, 100% PASS):
-npm test
+# Gesamte Test-Pipeline ausführen (33 Standard-Suiten + 4-Tier E2E Tests):
+npm run test:all
+
+# Oder gezielt:
+npm test                          # Führt alle 33 Kern- & Backend-Suiten aus
+npm run test:tiers                # Führt die 4-Tier Suite aus (93 Tests, 706 Checks, < 3s)
+npm run check:syntax              # Führt statische Syntaxprüfungen aller Frontend-Module durch
 
 # Gezielte Testsuiten ausführen:
 npm run test:dry                 # 23 Geometrie-, Linter- & Router-Tests
@@ -432,6 +401,9 @@ npm run test:popout              # 19 Multi-Monitor Popout Tests
 npm run test:version             # 20 Live-Versionskompatibilität (1.20 - 26.3)
 npm run test:schem               # 11 Litematica & Schematic SOTA Tests
 npm run test:gamemode-perfection # 20 Gamemode HUD, Inventory & Pitch-Clamp Tests
+npm run test:expedition          # 24 Autonome Höhlen- & Vein-Mining Tests
+npm run test:gameplay            # In-Game Chat, Guard-Manager & Defense Tests
+npm run test:ux-optimum          # Bot Control Deck & UI/UX Optimierungs-Tests
 ```
 
 ---

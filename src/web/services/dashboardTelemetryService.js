@@ -5,6 +5,9 @@ import { serverRights } from '../../bot/serverRights.js';
 import { worldExecutor } from '../../builder/worldExecutor.js';
 import { llmRouter } from '../../ai/llmRouter.js';
 import { manualController } from '../../bot/manualController.js';
+import { guardManager } from '../../bot/guardManager.js';
+import { harvestManager } from '../../survival/harvestManager.js';
+import { expeditionManager, EXPEDITION_STATES } from '../../survival/expeditionManager.js';
 
 /**
  * Builds hotbar slot data (0..8) from bot inventory and manualController.
@@ -130,6 +133,17 @@ export function buildBotTelemetry({
     ? controller.getFullInventory()
     : null;
 
+  const players = buildPlayersList(bot);
+  const tablist = buildTablistData(bot);
+  const activity = getActiveBotActivity({
+    bot,
+    controller,
+    executor,
+    guardMgr: guardManager,
+    harvestMgr: harvestManager,
+    expeditionMgr: expeditionManager
+  });
+
   return {
     type: 'bot_telemetry',
     pos,
@@ -147,6 +161,172 @@ export function buildBotTelemetry({
     manualControl,
     hotbar,
     fullInventory,
-    raycast
+    raycast,
+    players,
+    tablist,
+    activity
+  };
+}
+
+/**
+ * Computes human-friendly bot activity state with categorization and details.
+ * @param {object} context
+ * @returns {{code: string, label: string, details: string, badgeClass: string}}
+ */
+export function getActiveBotActivity({
+  bot,
+  controller = manualController,
+  executor = worldExecutor,
+  guardMgr = guardManager,
+  harvestMgr = harvestManager,
+  expeditionMgr = expeditionManager
+} = {}) {
+  if (controller?.isActive?.()) {
+    return {
+      code: 'MANUAL',
+      label: 'Manueller Gamemode',
+      details: 'First-Person Steuerung aktiv',
+      badgeClass: 'manual'
+    };
+  }
+
+  const guardStatus = (typeof guardMgr?.getStatus === 'function') ? guardMgr.getStatus() : null;
+  if (guardStatus?.active) {
+    const k = guardStatus.kills || 0;
+    const r = guardStatus.radius || 20;
+    return {
+      code: 'GUARDING',
+      label: 'Wachdienst aktiv',
+      details: `Schutzbereich ${r}m (${k} Feinde neutralisiert)`,
+      badgeClass: 'guard'
+    };
+  }
+
+  if (harvestMgr?.isHarvesting) {
+    return {
+      code: 'HARVESTING',
+      label: 'Ressourcen-Abbau',
+      details: 'Baut Erze / Holz in der Umgebung ab',
+      badgeClass: 'harvest'
+    };
+  }
+
+  if (expeditionMgr?.state && expeditionMgr.state !== EXPEDITION_STATES?.IDLE && expeditionMgr.state !== 'IDLE') {
+    return {
+      code: 'EXPEDITION',
+      label: 'Höhlen-Expedition',
+      details: `Phase: ${expeditionMgr.state}`,
+      badgeClass: 'expedition'
+    };
+  }
+
+  if (executor?.isBuilding) {
+    const prog = executor.getProgress();
+    return {
+      code: 'BUILDING',
+      label: prog?.phase || 'Bauphase aktiv',
+      details: prog?.title || 'Platziert Bauwerk in der Welt',
+      badgeClass: 'building'
+    };
+  }
+
+  if (bot?.pathfinder?.isMoving?.()) {
+    return {
+      code: 'PATHFINDING',
+      label: 'Unterwegs (Navigation)',
+      details: 'Bewegt sich zum Zielort',
+      badgeClass: 'moving'
+    };
+  }
+
+  return {
+    code: 'IDLE',
+    label: 'Bereit / Standby',
+    details: 'Wartet auf Architekten- oder Steuerbefehl',
+    badgeClass: 'idle'
+  };
+}
+
+/**
+ * Compiles real-time player list from active bot instance.
+ * @param {any} bot
+ * @returns {Array<{username: string, displayName: string, uuid: string, ping: number, gamemode: number, isBot: boolean}>}
+ */
+export function buildPlayersList(bot) {
+  if (!bot) return [];
+  const players = [];
+  const botUsername = bot.username || settings.MC_USERNAME || 'BaumeisterKI';
+
+  if (bot.players && typeof bot.players === 'object') {
+    for (const [key, p] of Object.entries(bot.players)) {
+      if (!p) continue;
+      const username = p.username || key;
+      let displayName = username;
+      if (typeof p.displayName === 'string' && p.displayName.trim().length > 0) {
+        displayName = p.displayName.trim();
+      } else if (p.displayName && typeof p.displayName.toString === 'function') {
+        const str = p.displayName.toString();
+        if (str && str.trim().length > 0) displayName = str.trim();
+      } else if (p.displayName && typeof p.displayName.text === 'string' && p.displayName.text.trim().length > 0) {
+        displayName = p.displayName.text.trim();
+      }
+
+      const isBot = Boolean(username.toLowerCase() === botUsername.toLowerCase());
+
+      players.push({
+        username,
+        displayName,
+        uuid: p.uuid || (isBot ? (bot._client?.uuid || '') : ''),
+        ping: typeof p.ping === 'number' ? Math.max(0, Math.round(p.ping)) : 0,
+        gamemode: typeof p.gamemode === 'number' ? p.gamemode : 0,
+        isBot
+      });
+    }
+  }
+
+  // Ensure bot player is included in tablist if bot is connected
+  if (botUsername && !players.some(p => p.username.toLowerCase() === botUsername.toLowerCase())) {
+    players.push({
+      username: botUsername,
+      displayName: botUsername,
+      uuid: bot._client?.uuid || '',
+      ping: 0,
+      gamemode: 0,
+      isBot: true
+    });
+  }
+
+  // Sort alphabetically by username
+  players.sort((a, b) => a.username.localeCompare(b.username));
+  return players;
+}
+
+/**
+ * Extracts tablist header and footer from bot.
+ * @param {any} bot
+ * @returns {{header: string|null, footer: string|null}}
+ */
+export function buildTablistData(bot) {
+  if (!bot || !bot.tablist) return { header: null, footer: null };
+  const parseChatComponent = (comp) => {
+    if (!comp) return null;
+    if (typeof comp === 'string') {
+      const trimmed = comp.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+    if (typeof comp.toString === 'function') {
+      const str = comp.toString().trim();
+      return str.length > 0 ? str : null;
+    }
+    if (typeof comp.text === 'string') {
+      const str = comp.text.trim();
+      return str.length > 0 ? str : null;
+    }
+    return null;
+  };
+
+  return {
+    header: parseChatComponent(bot.tablist.header),
+    footer: parseChatComponent(bot.tablist.footer)
   };
 }

@@ -24,7 +24,10 @@ export function registerModelApiRoutes(app, context) {
         endpoints,
         activeFastEndpointId: context.endpointManager.activeFastEndpointId,
         activeArchitectEndpointId: context.endpointManager.activeArchitectEndpointId,
-        zeroKeyFallbackEnabled: context.endpointManager.zeroKeyFallbackEnabled
+        zeroKeyFallbackEnabled: context.endpointManager.zeroKeyFallbackEnabled,
+        activeProfile: context.endpointManager.getRoutingProfile?.() || 'eco',
+        roleAssignments: context.endpointManager.getRoleAssignments?.() || {},
+        telemetry: context.endpointManager.getTelemetry?.() || {}
       });
     } catch (err) {
       logger.error(`[BFF] Fehler bei GET /api/endpoints: ${err.message}`);
@@ -230,6 +233,104 @@ export function registerModelApiRoutes(app, context) {
     }
   });
 
+  // =========================================================================
+  // OpenRouter OAuth 2.0 PKCE Flow Routes
+  // =========================================================================
+
+  // 11b. POST /api/auth/openrouter/pkce/start (Start PKCE authorization session)
+  app.post('/api/auth/openrouter/pkce/start', probeLimiter, async (req, res) => {
+    try {
+      await context.ensureServices();
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const callbackUrl = req.body?.callbackUrl || `${origin}/api/auth/openrouter/callback`;
+      const session = context.pkceAuthManager.startSession({ callbackUrl });
+      res.json(session);
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei POST /api/auth/openrouter/pkce/start: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 11c. GET /api/auth/openrouter/callback (OpenRouter browser callback from OAuth redirect)
+  app.get('/api/auth/openrouter/callback', async (req, res) => {
+    try {
+      await context.ensureServices();
+      const { code } = req.query;
+      if (!code) {
+        return res.status(400).send('<h3>Autorisierung fehlgeschlagen: Kein Code von OpenRouter erhalten.</h3>');
+      }
+
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const callbackUrl = `${origin}/api/auth/openrouter/callback`;
+
+      await context.pkceAuthManager.exchangeCode({
+        code: String(code),
+        callbackUrl
+      });
+
+      res.send(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>OpenRouter Autorisierung</title></head>
+<body style="background:#0b0f19;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <div style="text-align:center;padding:28px 36px;background:#131b2e;border:1px solid #1e293b;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.6);max-width:400px;">
+    <div style="font-size:36px;margin-bottom:8px;">🌐</div>
+    <h2 style="color:#10b981;margin:0 0 8px 0;font-size:18px;">OpenRouter erfolgreich autorisiert!</h2>
+    <p style="color:#94a3b8;font-size:13px;margin:0 0 12px 0;">Dein persönlicher OpenRouter API-Schlüssel wurde verschlüsselt im Tresor hinterlegt und der Modell-Pool aktualisiert.</p>
+    <p style="font-size:11px;color:#64748b;margin:0;">Dieses Fenster schließt sich automatisch...</p>
+  </div>
+  <script>
+    try {
+      if (window.opener) {
+        window.opener.postMessage({ type: 'openrouter_auth_success' }, '*');
+        setTimeout(() => window.close(), 1200);
+      } else {
+        setTimeout(() => { window.location.href = '/'; }, 1500);
+      }
+    } catch (e) {
+      setTimeout(() => window.close(), 1500);
+    }
+  </script>
+</body>
+</html>`);
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei GET /api/auth/openrouter/callback: ${err.message}`);
+      res.status(500).send(`<h3>Fehler beim Token-Tausch: ${err.message}</h3>`);
+    }
+  });
+
+  // 11d. POST /api/auth/openrouter/pkce/exchange (Direct API code exchange)
+  app.post('/api/auth/openrouter/pkce/exchange', async (req, res) => {
+    try {
+      await context.ensureServices();
+      const { code, sessionId, callbackUrl } = req.body || {};
+      const result = await context.pkceAuthManager.exchangeCode({ code, sessionId, callbackUrl });
+      res.json(result);
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei POST /api/auth/openrouter/pkce/exchange: ${err.message}`);
+      res.status(400).json({ success: false, error: err.message });
+    }
+  });
+
+  // 11e. GET /api/auth/openrouter/pkce/status/:sessionId (Check PKCE session status)
+  app.get('/api/auth/openrouter/pkce/status/:sessionId', async (req, res) => {
+    try {
+      await context.ensureServices();
+      const session = context.pkceAuthManager.getSession(req.params.sessionId);
+      if (!session) {
+        return res.status(404).json({ success: false, error: `Sitzung '${req.params.sessionId}' nicht gefunden.` });
+      }
+      res.json({
+        sessionId: session.sessionId,
+        status: session.status,
+        provider: session.provider,
+        endpointId: session.endpointId || null
+      });
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei GET /api/auth/openrouter/pkce/status/${req.params.sessionId}: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // 12. POST /api/endpoints/activate (Activate Tier primary & hot-reload router)
   app.post('/api/endpoints/activate', async (req, res) => {
     try {
@@ -258,6 +359,135 @@ export function registerModelApiRoutes(app, context) {
       });
     } catch (err) {
       logger.error(`[BFF] Fehler bei POST /api/endpoints/activate: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // =========================================================================
+  // LLM Routing v3.0 REST API Routes
+  // =========================================================================
+
+  // 13. GET /api/models/roles (Get all 5 roles status, active profile, and candidate recommendations)
+  app.get('/api/models/roles', async (req, res) => {
+    try {
+      await context.ensureServices();
+      const profile = context.endpointManager.getRoutingProfile?.() || 'eco';
+      const assignments = context.endpointManager.getRoleAssignments?.() || {};
+      const router = context.llmRouter || llmRouter;
+
+      const roles = ['NANO_CHAT', 'PLANNER_JSON', 'ARCHITECT_CODE', 'REGION_DIFF', 'SELF_HEAL_REASONING'];
+      const candidatesByRole = {};
+
+      for (const role of roles) {
+        const candidates = router.getCandidatesForRole ? router.getCandidatesForRole(role, 1) : [];
+        candidatesByRole[role] = {
+          pinnedEndpointId: assignments[role]?.pinnedEndpointId || null,
+          effectiveEndpoint: candidates[0] ? {
+            id: candidates[0].id,
+            name: candidates[0].name,
+            provider: candidates[0].provider,
+            model: candidates[0].model,
+            isFreeTier: candidates[0].isFreeTier,
+            costPer1MInput: candidates[0].costPer1MInput,
+            costPer1MOutput: candidates[0].costPer1MOutput,
+            capabilities: candidates[0].capabilities
+          } : null,
+          candidatesCount: candidates.length
+        };
+      }
+
+      res.json({
+        success: true,
+        profile,
+        roles: candidatesByRole
+      });
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei GET /api/models/roles: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 14. POST /api/models/profile (Change routing profile: eco / balanced / quality)
+  app.post('/api/models/profile', async (req, res) => {
+    try {
+      await context.ensureServices();
+      const { profile } = req.body || {};
+      if (!profile || !['eco', 'balanced', 'quality'].includes(profile)) {
+        return res.status(400).json({ success: false, error: 'profile muss "eco", "balanced" oder "quality" sein.' });
+      }
+
+      await context.endpointManager.setRoutingProfile(profile);
+      await (context.llmRouter || llmRouter).reloadPools(context.endpointManager);
+
+      res.json({ success: true, profile });
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei POST /api/models/profile: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 15. POST /api/models/roles/pin (Pin or unpin model for a specific role)
+  app.post('/api/models/roles/pin', async (req, res) => {
+    try {
+      await context.ensureServices();
+      const { role, endpointId } = req.body || {};
+      const validRoles = ['NANO_CHAT', 'PLANNER_JSON', 'ARCHITECT_CODE', 'REGION_DIFF', 'SELF_HEAL_REASONING'];
+
+      if (!role || !validRoles.includes(role)) {
+        return res.status(400).json({ success: false, error: `Ungültige Rolle '${role}'. Erlaubt: ${validRoles.join(', ')}` });
+      }
+
+      let updatedAssignment;
+      if (!endpointId || endpointId === 'auto') {
+        updatedAssignment = await context.endpointManager.unpinRole(role);
+      } else {
+        updatedAssignment = await context.endpointManager.pinRole(role, endpointId);
+      }
+
+      await (context.llmRouter || llmRouter).reloadPools(context.endpointManager);
+
+      res.json({
+        success: true,
+        role,
+        assignment: updatedAssignment
+      });
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei POST /api/models/roles/pin: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 16. POST /api/providers/:id/sync (Trigger live model synchronization for provider)
+  app.post('/api/providers/:id/sync', probeLimiter, async (req, res) => {
+    try {
+      await context.ensureServices();
+      const targetId = req.params.id;
+      const affected = await context.endpointManager.syncProviderModels(targetId);
+      await (context.llmRouter || llmRouter).reloadPools(context.endpointManager);
+
+      res.json({
+        success: true,
+        provider: targetId,
+        syncedCount: affected.length,
+        models: affected
+      });
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei POST /api/providers/${req.params.id}/sync: ${err.message}`);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 17. GET /api/models/telemetry (Live token and cost statistics)
+  app.get('/api/models/telemetry', async (req, res) => {
+    try {
+      await context.ensureServices();
+      const telemetry = context.endpointManager.getTelemetry?.() || {};
+      res.json({
+        success: true,
+        telemetry
+      });
+    } catch (err) {
+      logger.error(`[BFF] Fehler bei GET /api/models/telemetry: ${err.message}`);
       res.status(500).json({ success: false, error: err.message });
     }
   });

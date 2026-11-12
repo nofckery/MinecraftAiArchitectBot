@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Architect Mission Control — Autonomous Minecraft AI</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Three.js & OrbitControls via CDN -->
+  <!-- Three.js, OrbitControls & TransformControls via CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
 </head>
 <body>
   <header class="app-header">
@@ -44,6 +45,10 @@
         <span class="pill-label">RECHTE:</span>
         <span id="pillServerRights" class="pill-val">Prüfe...</span>
       </div>
+      <div id="pillLanDiscovered" class="telemetry-pill lan-pill hidden" role="button" tabindex="0" title="Minecraft LAN-Welt erkannt! Klicke hier für Schnellverbindung.">
+        <span class="pill-label">🎮 LAN:</span>
+        <span id="txtLanDiscoveredInfo" class="pill-val">Gefunden</span>
+      </div>
       <div id="connectionStatusBadge" class="status-badge connecting">
         <span class="status-dot"></span>
         <span id="connectionStatusText">Verbinde WebSocket...</span>
@@ -67,13 +72,42 @@
       <div class="panel-body">
         <!-- TAB 1: Prismarine Viewer iframe & Gamemode Cockpit -->
         <div id="tab-viewer" class="tab-pane active" role="tabpanel" aria-labelledby="tabBtnViewer">
-          <div class="viewer-wrapper" id="viewerWrapper">
-            <!-- Stream Iframe (allow fullscreen & pointer-lock permissions) -->
-            <iframe id="viewerFrame" src="about:blank" title="Prismarine Viewer" allow="fullscreen; pointer-lock" allowfullscreen></iframe>
+          <div class="viewer-wrapper viewer-container" id="viewerWrapper" data-container="viewerContainer">
+            <!-- Stream Iframe (allow fullscreen & pointer-lock permissions; initially hidden & blanked to prevent ERR_CONNECTION_REFUSED) -->
+            <iframe id="viewerFrame" src="about:blank" title="Prismarine Viewer" allow="fullscreen; pointer-lock" allowfullscreen style="display: none;"></iframe>
+
+            <!-- Offline Fallback Status Card (F7/F8) - Dark-CAD Glassmorphism Replacement for Browser Error Screen -->
+            <div id="viewerOfflinePlaceholder" class="viewer-offline-placeholder viewer-detached-placeholder" style="display: flex;">
+              <div class="detached-card viewer-offline-card">
+                <div class="viewer-offline-badge-row">
+                  <span class="status-badge offline status-pill-cad unreachable">
+                    <span class="status-dot pulse-offline"></span>
+                    <span class="status-badge-text">STREAM OFFLINE</span>
+                  </span>
+                </div>
+                <div class="detached-icon viewer-offline-icon">📡</div>
+                <div class="detached-title viewer-offline-title offline-notice-text" id="viewerOfflineTitle">
+                  ● BOT-CAM OFFLINE: Prismarine-Viewer auf Port <span id="offlinePortDisplay">3081</span> nicht erreichbar
+                </div>
+                <p class="detached-desc viewer-offline-desc" id="lblOfflineDesc">
+                  Der 3D-Kamera-Stream konnte auf Port 3081 nicht erreicht werden. Der Bot ist noch nicht gestartet, der Prismarine-Viewer pausiert oder der Port wird blockiert.
+                </p>
+                <div class="detached-actions viewer-offline-actions">
+                  <button id="btnRetryViewerConnection" class="btn btn-primary btn-sm btn-retry-viewer" type="button" title="Verbindung zu Port 3081 erneut prüfen">
+                    <span class="btn-retry-icon">↺</span>
+                    <span class="btn-retry-label">Verbindung wiederholen</span>
+                  </button>
+                  <button id="btnToggleViewerStreamOffline" class="btn btn-secondary btn-sm" type="button" title="Viewer-Stream im Bot umschalten">
+                    ⚙️ Stream-Status
+                  </button>
+                </div>
+              </div>
+            </div>
 
             <!-- Default Viewer Overlay Bar (always accessible in standard mode) -->
             <div class="viewer-overlay-bar" id="viewerOverlayBar">
               <span class="live-tag">● LIVE CAM</span>
+              <button id="btnToggleViewerStream" class="btn-micro btn-viewer-toggle" title="Prismarine 3D-Viewer an- oder ausschalten (schont CPU & RAM)" type="button">🎥 Stream: An</button>
               <button id="btnReloadViewer" class="btn-micro" title="Viewer neu laden" type="button">↺ Neu laden</button>
               <button id="btnFullscreenViewer" class="btn-micro" title="Vollbildmodus aktivieren" type="button">⛶ Vollbild</button>
               <button id="btnPopoutViewer" class="btn-micro btn-popout" title="Kamera in separatem Fenster/Tab öffnen" type="button">↗ Auslagern</button>
@@ -104,7 +138,53 @@
                   <span class="gamemode-label">MANUAL COCKPIT</span>
                   <span id="gamemodeCoordinates" class="gamemode-coords">X: 0.0 Y: 0.0 Z: 0.0</span>
                 </div>
-                <button id="btnExitGamemode" class="btn-gamemode-exit" title="Gamemode beenden und Bot in Standby parken (ESC)" type="button">✕ Beenden (ESC)</button>
+                <div class="gamemode-top-actions">
+                  <button id="btnGamemodeHelp" class="btn-gamemode-help" title="Tastenbelegung &amp; Steuerungshilfe einblenden (H)" type="button">❓ Steuerung [H]</button>
+                  <button id="btnExitGamemode" class="btn-gamemode-exit" title="Gamemode beenden und Bot in Standby parken (ESC)" type="button">✕ Beenden (ESC)</button>
+                </div>
+              </div>
+
+              <!-- Controls Cheat Sheet Overlay (Toggled via 'H' or button) -->
+              <div id="gamemodeHelpOverlay" class="gamemode-help-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="gamemodeHelpTitle">
+                <div class="help-card">
+                  <div class="help-card-header">
+                    <div class="help-title-group">
+                      <span class="help-icon">🎮</span>
+                      <h3 id="gamemodeHelpTitle">FIRST-PERSON STEUERUNG (MINECRAFT TASTATURBELEGUNG)</h3>
+                    </div>
+                    <button type="button" id="btnCloseGamemodeHelp" class="btn-micro" title="Schließen (H / ESC)">✕</button>
+                  </div>
+                  <div class="help-grid">
+                    <div class="help-col">
+                      <div class="help-group-title">🚶 Bewegung &amp; Blick</div>
+                      <div class="keybind-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Vorwärts / Links / Rückwärts / Rechts</span></div>
+                      <div class="keybind-row"><kbd>Leertaste</kbd><span>Springen (Jump)</span></div>
+                      <div class="keybind-row"><kbd>Umschalt</kbd><span>Schleichen (Sneak)</span></div>
+                      <div class="keybind-row"><kbd>Strg</kbd><span>Sprinten (Run)</span></div>
+                      <div class="keybind-row"><kbd>Maus</kbd><span>Blickrichtung / Umschauen (Pointer Lock)</span></div>
+                    </div>
+                    <div class="help-col">
+                      <div class="help-group-title">⚔️ Aktionen &amp; Interaktion</div>
+                      <div class="keybind-row"><kbd>Linksklick</kbd><span>Abbauen (Mining) / Angreifen</span></div>
+                      <div class="keybind-row"><kbd>Rechtsklick</kbd><span>Block platzieren / Benutzen / Kiste öffnen</span></div>
+                      <div class="keybind-row"><kbd>1</kbd> - <kbd>9</kbd> / <kbd>Mausrad</kbd><span>Hotbar-Slot wählen</span></div>
+                      <div class="keybind-row"><kbd>F</kbd><span>Haupt- und Zweithand tauschen</span></div>
+                      <div class="keybind-row"><kbd>Q</kbd> / <kbd>Strg+Q</kbd><span>Item wegwerfen (1x / ganzer Stapel)</span></div>
+                    </div>
+                    <div class="help-col">
+                      <div class="help-group-title">🎒 Menüs &amp; Server-Tools</div>
+                      <div class="keybind-row"><kbd>E</kbd><span>Survival-Inventar &amp; Crafting (2x2)</span></div>
+                      <div class="keybind-row"><kbd>T</kbd> / <kbd>/</kbd><span>In-Game Chat öffnen / Befehl senden</span></div>
+                      <div class="keybind-row"><kbd>Tab</kbd><span>Spielerliste &amp; Pings anzeigen</span></div>
+                      <div class="keybind-row"><kbd>ESC</kbd><span>Pause-Menü / Standby / Mauszeiger lösen</span></div>
+                      <div class="keybind-row"><kbd>H</kbd><span>Diese Steuerungshilfe ein-/ausblenden</span></div>
+                    </div>
+                  </div>
+                  <div class="help-footer">
+                    <span>💡 Tipp: Im Inventar kannst du mit <strong>Shift+Klick</strong> Items sofort transferieren und mit <strong>Rechtsklick</strong> Stapel teilen.</span>
+                    <button type="button" id="btnDismissHelpFooter" class="btn btn-primary btn-sm">Verstanden (H)</button>
+                  </div>
+                </div>
               </div>
 
               <!-- Center HUD: Reticle & Raycast Inspection -->
@@ -274,6 +354,7 @@
                   <div id="gamemodePauseTitle" class="pause-menu-title">SPIEL PAUSIERT</div>
                   <div class="pause-menu-buttons">
                     <button type="button" id="btnResumeGame" class="btn-pause-primary">▶ Zurück zum Spiel</button>
+                    <button type="button" id="btnOpenHelpFromPause" class="btn-pause-secondary">❓ Steuerungshilfe anzeigen (H)</button>
                     <button type="button" id="btnOpenInventoryFromPause" class="btn-pause-secondary">🎒 Inventar öffnen (E)</button>
                     <button type="button" id="btnOpenChatFromPause" class="btn-pause-secondary">💬 Chat öffnen (T)</button>
                     <div class="pause-sensitivity-setting">
@@ -302,6 +383,19 @@
 
               <!-- Item Hover Tooltip -->
               <div id="inventoryItemTooltip" class="inventory-item-tooltip hidden"></div>
+
+              <!-- Minecraft Player Tablist Overlay (Hold Tab) -->
+              <div id="gamemodePlayerTablist" class="gamemode-player-tablist hidden" role="region" aria-label="Minecraft Spielerliste">
+                <div class="mc-tablist-container">
+                  <div id="mcTablistHeader" class="mc-tablist-header hidden"></div>
+                  <div class="mc-tablist-server-bar">
+                    <span class="mc-tablist-title">Spieler auf dem Server</span>
+                    <span id="mcTablistPlayerCount" class="mc-tablist-count">(0)</span>
+                  </div>
+                  <div id="mcTablistPlayerGrid" class="mc-tablist-player-grid"></div>
+                  <div id="mcTablistFooter" class="mc-tablist-footer hidden"></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -315,6 +409,18 @@
                 <button id="btnReembedViewer" class="btn btn-primary btn-sm" type="button">⤺ Im Cockpit wiedereinbetten</button>
                 <button id="btnRefocusPopout" class="btn btn-secondary btn-sm" type="button">⧉ Fenster fokussieren</button>
                 <button id="btnReattachGamemode" class="btn btn-primary btn-sm hidden" type="button">⤺ Im Cockpit wiedereinbetten</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Disabled Viewer Placeholder (shown when viewer is toggled off) -->
+          <div id="viewerDisabledPlaceholder" class="viewer-detached-placeholder hidden">
+            <div class="detached-card">
+              <div class="detached-icon">💤</div>
+              <div class="detached-title">● 3D BOT-CAM PAUSIERT / DEAKTIVIERT</div>
+              <p class="detached-desc">Der Prismarine-Viewer Stream ist ausgeschaltet, um CPU-, GPU- und RAM-Ressourcen zu schonen. Ideal beim Spielen in lokalen LAN-Welten auf demselben Computer.</p>
+              <div class="detached-actions">
+                <button id="btnEnableViewerStream" class="btn btn-primary btn-sm" type="button">▶️ 3D-Kamera aktivieren</button>
               </div>
             </div>
           </div>
@@ -340,6 +446,7 @@
             <div class="map-actions">
               <span id="mapSimulatedNotice" class="badge-sub notice-warning hidden">⚠️ Offline-Simulation</span>
               <span id="selectionDimensions" class="selection-badge">Kein Bereich markiert</span>
+              <button id="btnToggleMapMoveMode" class="btn btn-secondary btn-sm" title="Klick-Navigation: Klicke auf die Karte, um den Bot sofort dorthin zu navigieren (ohne Shift)" type="button">🎯 Ziel per Klick</button>
               <button id="btnApplyBuildBox" class="btn btn-primary btn-sm" disabled>Bauplatz fixieren</button>
               <button id="btnRefreshMap" class="btn btn-secondary btn-sm" title="Karte aktualisieren" aria-label="2D-Grundstücksraster aktualisieren">↺ Raster</button>
             </div>
@@ -356,7 +463,7 @@
             <div class="legend-item"><span class="color-dot water"></span> Wasser</div>
             <div class="legend-item"><span class="color-dot wood"></span> Holz/Erde</div>
             <div class="legend-item"><span class="color-dot bot"></span> Bot</div>
-            <div class="legend-item legend-hint">💡 <em>Shift + Klick = Bot dorthin bewegen</em></div>
+            <div class="legend-item legend-hint">💡 <em>Klicke auf die Karte (oder Shift+Klick), um den Bot sofort dorthin zu navigieren</em></div>
           </div>
         </div>
 
@@ -446,11 +553,63 @@
                     </select>
                   </div>
                 </div>
+                <div class="form-checkbox mt-2">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgEnableMinecraftChat" name="ENABLE_MINECRAFT_CHAT" checked>
+                    <span class="checkmark"></span>
+                    Minecraft In-Game Chat-Ausgaben aktivieren
+                  </label>
+                  <small class="form-hint">Ausschalten aktiviert den <strong>Stillen Modus</strong>: Der Bot schreibt keine Nachrichten in den Minecraft-Chat (verhindert Chat-Spam & schützt Koordinaten vor Mitspielern). Alle Meldungen bleiben im Web-Dashboard sichtbar.</small>
+                </div>
               </div>
 
               <!-- Sektion 2: Server-Verbindung & Version -->
               <div class="settings-section">
                 <h4 class="settings-section-title">🌐 Minecraft-Server</h4>
+
+                <!-- Fabric Mod Mismatch Diagnostic Alert Box -->
+                <div id="botKickDiagnosticBanner" class="fabric-diagnostic-banner hidden" role="alert">
+                  <div class="fabric-diag-header">
+                    <span class="fabric-diag-title">
+                      <span class="fabric-diag-icon">⚠️</span>
+                      <strong id="fabricDiagTitle">Fabric Loader &amp; API erforderlich</strong>
+                    </span>
+                    <button type="button" class="fabric-diag-close" id="btnDismissFabricDiag" title="Schließen">&times;</button>
+                  </div>
+                  <div class="fabric-diag-body" id="fabricDiagMessage">
+                    Der Server erfordert Fabric API und spezifische Client-Mods. Da BaumeisterKI ein Node.js/Vanilla-Bot ist, kann er Mod-Netzwerkdaten nicht direkt verarbeiten.
+                  </div>
+                  <div class="fabric-diag-namespaces" id="fabricDiagNamespaces"></div>
+                  <div class="fabric-diag-instance" id="fabricDiagInstanceBox">
+                    <span class="fabric-diag-inst-label" id="fabricDiagInstLabel">🎮 Lokale Minecraft-Instanz:</span>
+                    <code id="fabricDiagInstancePath" class="fabric-diag-code">Scannt lokale Minecraft-Pfade...</code>
+                    <div id="fabricDiagInstalledNotice" class="fabric-diag-installed hidden">✅ &quot;Bypass Fabric Check&quot; ist in dieser Instanz bereits installiert! Starte Minecraft neu, öffne deine Welt im LAN und klicke auf &quot;Erneut verbinden&quot;.</div>
+                    <button type="button" class="fabric-diag-btn-install hidden" id="btnInstallFabricBypass">⚡ 1-Klick Installation in Mods-Ordner</button>
+                  </div>
+                  <div class="fabric-diag-actions">
+                    <a href="https://modrinth.com/mod/bypass-fabric-check" target="_blank" rel="noopener noreferrer" class="fabric-diag-btn-primary" id="fabricDiagModrinthLink">
+                      📦 Bypass Fabric Check (Modrinth) herunterladen
+                    </a>
+                    <button type="button" class="fabric-diag-btn-secondary" id="btnRetryFabricConnect">
+                      🔄 Erneut verbinden
+                    </button>
+                  </div>
+                </div>
+
+                <!-- LAN Auto-Discovery Box -->
+                <div class="lan-discovery-box mb-2" id="lanDiscoveryBox">
+                  <div class="lan-box-header">
+                    <span class="lan-box-title">🎮 Minecraft LAN-Welten (Auto-Erkennung)</span>
+                    <span id="lanScanStatus" class="lan-scan-badge">📡 Scannt 224.0.2.60:4445...</span>
+                  </div>
+                  <div id="lanWorldsList" class="lan-worlds-list">
+                    <div class="lan-world-empty">Keine aktiven LAN-Welten gefunden. Öffne deine Minecraft-Welt über ESC &rarr; &quot;Im LAN öffnen&quot;.</div>
+                  </div>
+                  <div class="lan-actions mt-1">
+                    <button type="button" id="btnApplyLanPreset" class="btn-micro" title="Setzt MC_HOST auf 127.0.0.1 und Auth auf offline">⚡ LAN-Standardwerte setzen (127.0.0.1 / offline)</button>
+                  </div>
+                </div>
+
                 <div class="form-row">
                   <div class="form-group flex-2">
                     <label for="cfgMcHost">Server-Adresse (MC_HOST):</label>
@@ -625,6 +784,19 @@
                 </div>
               </div>
 
+              <!-- Sektion 5: 3D Live Bot-Cam & Performance -->
+              <div class="settings-section">
+                <h4 class="settings-section-title">🎥 3D Live Bot-Cam (Prismarine Viewer)</h4>
+                <div class="form-checkbox">
+                  <label class="checkbox-container">
+                    <input type="checkbox" id="cfgEnableViewer" name="ENABLE_PRISMARINE_VIEWER" checked>
+                    <span class="checkmark"></span>
+                    Prismarine-Viewer 3D-Kamera aktivieren
+                  </label>
+                  <small class="form-hint">Ausschalten stoppt den 3D-Stream und schont CPU, GPU und RAM – besonders empfohlen, wenn du auf demselben PC im LAN mitspielst.</small>
+                </div>
+              </div>
+
               <!-- Settings Action Bar -->
               <div class="settings-actions-bar">
                 <button type="submit" id="btnSaveSettings" class="btn btn-primary">
@@ -641,35 +813,116 @@
       </div>
     </section>
 
-    <!-- SPALTE 2: 3D-Hologramm-Vorschau (Three.js Voxel Previewer & CAD Toolbar) -->
-    <section class="column col-center">
-      <div class="panel-header">
+    <!-- SPALTE 2: 3D-Hologramm-Vorschau & CAD World Studio -->
+    <section id="cadStudioColumn" class="column col-center">
+      <div class="panel-header cad-studio-header">
         <div class="panel-title">
-          <h2>3D-HOLOGRAMM VORSCHAU</h2>
+          <h2>3D CAD WORLD STUDIO</h2>
           <span id="previewStats" class="badge-sub">Warte auf Bauplan...</span>
         </div>
-        <div id="linterBadge" class="linter-badge idle">
-          Linter: Standby
+        <div class="cad-studio-header-actions">
+          <button id="btnToggleWorldScannerBar" class="btn-micro cad-header-btn active" title="Minecraft Welt-Scanner & Anvil (.mca) Loader ein-/ausblenden" type="button">🌍 Welt-Scan</button>
+          <button id="btnToggleStudioInspector" class="btn-micro cad-header-btn active" title="Scene-Tree Outliner, Gizmo-Inspektor & Studio-KI ein-/ausblenden" type="button">🗂️ Szene & KI</button>
+          <div id="linterBadge" class="linter-badge idle">
+            Linter: Standby
+          </div>
+          <button id="btnToggleCadFullscreen" class="btn-micro btn-cad-fullscreen" title="Vollbild CAD Studio Workstation umschalten [F]" type="button">⛶ CAD Vollbild [F]</button>
         </div>
       </div>
 
-      <div class="panel-body flex-col">
+      <div class="panel-body flex-col cad-studio-body">
+        <!-- Hybrider Welt-Scanner & Projekt-Leiste -->
+        <div id="cadWorldScanBar" class="cad-world-scan-bar">
+          <div class="scan-bar-group">
+            <span class="toolbar-label">Welt-Quelle:</span>
+            <select id="selWorldScanSource" class="cad-select" aria-label="Minecraft Welt-Quelle auswählen">
+              <option value="live_bot">🤖 Live-Bot Chunks (oder Relief-Simulation)</option>
+            </select>
+            <select id="selWorldScanRadius" class="cad-select cad-select-sm" title="Scan-Radius in Blöcken" aria-label="Welt-Scan Radius">
+              <option value="24">Radius 24</option>
+              <option value="32" selected>Radius 32</option>
+              <option value="48">Radius 48</option>
+              <option value="64">Radius 64</option>
+            </select>
+            <label class="cad-inline-check" title="Bäume & Laub beim Geländescan mitladen">
+              <input type="checkbox" id="chkScanIncludeFoliage" checked>
+              <span>🌲 Bäume</span>
+            </label>
+            <button id="btnScanWorldIntoCad" class="btn btn-primary btn-sm" type="button" title="Minecraft-Gelände in den 3D CAD-Viewer scannen">
+              📡 Welt in CAD laden
+            </button>
+            <label class="cad-inline-check" title="Gescanntes Gelände im 3D-Viewport ein-/ausblenden">
+              <input type="checkbox" id="chkToggleTerrainVisible" checked>
+              <span>Gelände zeigen</span>
+            </label>
+          </div>
+
+          <div class="scan-bar-group">
+            <span class="toolbar-label">Projekt:</span>
+            <input type="text" id="inpCadProjectName" class="brush-input" placeholder="Mein Dorf-Plan" value="Dorf_Projekt_1" aria-label="CAD-Projektname">
+            <button id="btnSaveCadProject" class="btn-micro" type="button" title="Aktuelle Multi-Schematic-Szene als Projekt speichern">💾 Speichern</button>
+            <select id="selLoadCadProject" class="cad-select cad-select-sm" aria-label="Gespeichertes CAD-Projekt laden">
+              <option value="">📂 Projekt laden...</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Interaktive 3D CAD Toolbar -->
         <div class="three-toolbar">
           <div class="toolbar-section">
             <span class="toolbar-label">Werkzeuge:</span>
             <div class="btn-group">
-              <button id="toolOrbit" class="tool-btn active" title="Kamera / Orbit" aria-label="Kamera-Orbit Werkzeug">🎥 Orbit</button>
-              <button id="toolSelectBox" class="tool-btn" title="3D-Bereich markieren (Selection Box)" aria-label="3D-Bereichsauswahl">🎯 Bereich</button>
-              <button id="toolBrush" class="tool-btn" title="Voxel-Pinsel (Setzen)" aria-label="Voxel-Pinsel">🖌️ Pinsel</button>
-              <button id="toolEraser" class="tool-btn" title="Radiergummi (Löschen)" aria-label="Voxel-Radierer">🧹 Radierer</button>
+              <button id="toolOrbit" class="tool-btn active" title="Kamera / Orbit [O]" aria-label="Kamera-Orbit Werkzeug">🎥 Orbit</button>
+              <button id="toolGizmoMove" class="tool-btn" title="3D Transform-Gizmo: Gebäude im Raum verschieben [G]" aria-label="3D Verschiebe-Gizmo">✥ Verschieben</button>
+              <button id="toolGizmoRotate" class="tool-btn" title="3D Transform-Gizmo: Gebäude um 90° drehen [R]" aria-label="3D Rotations-Gizmo">↻ Drehen</button>
+              <button id="toolPlaceOnTerrain" class="tool-btn" title="Klick-Platzierung: Klicke auf das Gelände, um das aktive Haus dorthin zu setzen" aria-label="Auf Gelände platzieren">📍 Platzieren</button>
+              <button id="toolSelectBox" class="tool-btn" title="3D-Bereich markieren (Selection Box) [S]" aria-label="3D-Bereichsauswahl">🎯 Bereich</button>
+              <button id="toolBrush" class="tool-btn" title="Voxel-Pinsel (Setzen) [B]" aria-label="Voxel-Pinsel">🖌️ Pinsel</button>
+              <button id="toolEraser" class="tool-btn" title="Radiergummi (Löschen) [E]" aria-label="Voxel-Radierer">🧹 Radierer</button>
               <button id="toolEyedropper" class="tool-btn" title="Pipette (Block-Picker)" aria-label="Block-Pipette">🧪 Pipette</button>
+              <button id="toolMeasure" class="tool-btn" title="3D-Maßband: Abstand zwischen zwei Blöcken messen [M]" aria-label="3D-Maßband">📏 Maßband</button>
+            </div>
+          </div>
+
+          <div class="toolbar-section">
+            <span class="toolbar-label">Historie:</span>
+            <div class="btn-group">
+              <button id="btnSceneUndo" class="tool-btn" title="Schritt rückgängig (Strg+Z)" type="button">↶ Undo</button>
+              <button id="btnSceneRedo" class="tool-btn" title="Schritt wiederherstellen (Strg+Y)" type="button">↷ Redo</button>
+            </div>
+          </div>
+
+          <div class="toolbar-section">
+            <span class="toolbar-label">Ansicht:</span>
+            <div class="btn-group">
+              <button id="btnModeTextures" class="tool-btn active" title="100% Original Minecraft Texturen & Geometrien" type="button">🎮 Texturen</button>
+              <button id="btnModeHologram" class="tool-btn" title="CAD Farbmodus (Hologramm)" type="button">💎 CAD</button>
+              <button id="btnModeWireframe" class="tool-btn" title="Drahtgitter-Konstruktionsansicht" type="button">📐 Gitter</button>
             </div>
           </div>
 
           <div class="toolbar-section">
             <span class="toolbar-label">Pinsel:</span>
-            <input type="text" id="txtBrushBlock" value="stone_bricks" class="brush-input" title="Blockname für Pinsel" aria-label="Minecraft Block-Name für den Voxel-Pinsel">
+            <input type="text" id="txtBrushBlock" value="stone_bricks" list="minecraftBlocksDatalist" class="brush-input" title="Blockname für Pinsel (Autocomplete für alle 26.3 Blöcke)" aria-label="Minecraft Block-Name für den Voxel-Pinsel">
+            <datalist id="minecraftBlocksDatalist"></datalist>
+            <div class="btn-group">
+              <button id="btnBrush1x" class="tool-btn btn-micro active" title="Pinselgröße 1x1 Voxel" type="button">1x</button>
+              <button id="btnBrush2x" class="tool-btn btn-micro" title="Pinselgröße 2x2 Voxel" type="button">2x</button>
+              <button id="btnBrush3x" class="tool-btn btn-micro" title="Pinselgröße 3x3 Voxel" type="button">3x</button>
+            </div>
+          </div>
+
+          <div class="toolbar-section">
+            <span class="toolbar-label">Kamera:</span>
+            <div class="btn-group">
+              <button id="btnViewIso" class="tool-btn" title="Isometrische Standard-Perspektive" type="button">🏠 Iso</button>
+              <button id="btnViewTop" class="tool-btn" title="Draufsicht (Top-Down 2D Bauplan)" type="button">🔝 Top</button>
+              <button id="btnViewNorth" class="tool-btn" title="Nord-Ansicht" type="button">N</button>
+              <button id="btnViewSouth" class="tool-btn" title="Süd-Ansicht" type="button">S</button>
+              <button id="btnViewEast" class="tool-btn" title="Ost-Ansicht" type="button">O</button>
+              <button id="btnViewWest" class="tool-btn" title="West-Ansicht" type="button">W</button>
+              <button id="btnViewFocus" class="tool-btn" title="Kamera auf Bauwerk zentrieren" type="button">🎯 Fokus</button>
+            </div>
           </div>
 
           <div class="toolbar-section">
@@ -684,15 +937,156 @@
           </div>
 
           <div class="toolbar-section">
+            <span class="toolbar-label">Umgebung:</span>
+            <div class="cad-env-sliders">
+              <label title="Sonnenstand / Tageszeit (Schattenwurf & Beleuchtung)">☀️ <input type="range" id="sliderSunTime" min="0" max="24" step="0.5" value="12" class="cad-mini-slider"></label>
+              <label title="Ghost-/Hologramm-Transparenz der platzierten Gebäude">👻 <input type="range" id="sliderGhostOpacity" min="0.15" max="1" step="0.05" value="1" class="cad-mini-slider"></label>
+            </div>
             <button id="btnToggleXray" class="tool-btn btn-xray" title="Server-Terrain & Kollisionen einblenden" aria-label="Server-Terrain und Kollisionen als X-Ray einblenden">👁️ X-Ray</button>
+            <button id="btnToggleVerifier" class="tool-btn active" title="Litematica-Verifier Overlay (Kollisionen = Rot, Fundament-Lücken = Gelb, Solide = Grün)" type="button">🔍 Verifier</button>
           </div>
         </div>
 
-        <!-- 3D Canvas Container -->
-        <div id="threeContainer" class="three-container">
-          <div id="threeOverlayNotice" class="three-overlay-notice">
-            <span>✨ Gib rechts einen Bauwunsch ein oder lade links eine Schematic!</span>
+        <!-- 26.3 Quick-Palette Swatches -->
+        <div class="quick-swatches-bar">
+          <span class="toolbar-label">Schnell-Material:</span>
+          <div class="swatches-group">
+            <button class="swatch-btn" data-block="stone_bricks" title="Steinziegel"><span class="swatch-dot" style="background:#767676;"></span> Steinziegel</button>
+            <button class="swatch-btn" data-block="deepslate_bricks" title="Deepslate-Ziegel"><span class="swatch-dot" style="background:#3b3b44;"></span> Deepslate</button>
+            <button class="swatch-btn" data-block="oak_planks" title="Eichenholz"><span class="swatch-dot" style="background:#b58e58;"></span> Eiche</button>
+            <button class="swatch-btn" data-block="spruce_planks" title="Fichtenholz"><span class="swatch-dot" style="background:#6c4c2d;"></span> Fichte</button>
+            <button class="swatch-btn" data-block="pale_oak_planks" title="MC 26.3: Blasseiche (Pale Oak)"><span class="swatch-dot" style="background:#dcdbd6;"></span> 26.3 Blasseiche</button>
+            <button class="swatch-btn" data-block="resin_bricks" title="MC 26.3: Harz-Ziegel (Resin Bricks)"><span class="swatch-dot" style="background:#943a18;"></span> 26.3 Harz-Ziegel</button>
+            <button class="swatch-btn" data-block="glass" title="Glas"><span class="swatch-dot" style="background:#a8d5e5;"></span> Glas</button>
+            <button class="swatch-btn" data-block="lantern" title="Laterne"><span class="swatch-dot" style="background:#fcd34d;"></span> Laterne</button>
           </div>
+        </div>
+
+        <!-- Haupt-Arbeitsbereich: 3D-Viewport + Outliner/KI-Seitenleiste -->
+        <div id="cadStudioWorkspace" class="cad-studio-workspace">
+          <!-- 3D Canvas Container -->
+          <div id="threeContainer" class="three-container">
+            <div id="threeOverlayNotice" class="three-overlay-notice">
+              <span>✨ Scanne oben eine Minecraft-Welt oder füge rechts mehrere Schematics in die Szene ein!</span>
+            </div>
+
+            <!-- Live Litematica Verifier & Measure Status HUD im Viewport -->
+            <div class="cad-viewport-hud-top">
+              <div id="studioVerifierBadges" class="studio-verifier-badges">
+                <span class="v-pill v-solid" title="Solide Fundamentpunkte auf dem Boden">🟢 Solide: <strong id="lblVerifierSolid">0</strong></span>
+                <span class="v-pill v-collision" title="Kollisionen mit Terrain oder Nachbargebäuden">🔴 Kollisionen: <strong id="lblVerifierCollisions">0</strong></span>
+                <span class="v-pill v-gap" title="Schwebende Fundament-Lücken unter Gebäuden">🟡 Lücken: <strong id="lblVerifierGaps">0</strong></span>
+              </div>
+              <div id="studioMeasureReadout" class="studio-measure-readout hidden">📏 Maßband bereit</div>
+              <button id="btnViewportCanvasFullscreen" class="btn-viewport-fs" title="CAD Vollbild umschalten [F]" type="button">
+                ⛶ Vollbild [F]
+              </button>
+            </div>
+          </div>
+
+          <!-- Rechte Studio-Sidebar: Tabbed Navigation (Objekte, Inspektor, Spatial KI) -->
+          <aside id="cadStudioSidebar" class="cad-studio-sidebar" data-active-tab="objects">
+            <!-- Sidebar Tab-Header -->
+            <nav class="cad-sidebar-tabs" role="tablist" aria-label="CAD Studio Seitenleiste Navigation">
+              <button type="button" class="cad-sidebar-tab active" data-tab="objects" id="tabBtnCadObjects" role="tab" aria-selected="true" title="Scene Tree & Schematics">
+                🗂️ Objekte
+              </button>
+              <button type="button" class="cad-sidebar-tab" data-tab="inspector" id="tabBtnCadInspector" role="tab" aria-selected="false" title="Objekt-Transform & Terraforming">
+                📐 Inspektor
+              </button>
+              <button type="button" class="cad-sidebar-tab" data-tab="ai" id="tabBtnCadAi" role="tab" aria-selected="false" title="Spatial AI Co-Pilot">
+                🧠 Spatial KI
+              </button>
+            </nav>
+
+            <div class="cad-sidebar-content">
+              <!-- Tab 1: Multi-Schematic Outliner / Scene Tree -->
+              <div id="cadTabObjects" class="cad-tab-pane active" data-tab-pane="objects" role="tabpanel" aria-labelledby="tabBtnCadObjects">
+                <div class="studio-card">
+                  <div class="studio-card-header">
+                    <span class="studio-card-title">🗂️ SCENE TREE</span>
+                    <span id="lblSceneObjectCount" class="badge-sub">0</span>
+                  </div>
+                  <div class="studio-add-schem-row">
+                    <select id="selQuickAddSchematic" class="cad-select" aria-label="Schematic zum Einfügen in die Szene auswählen">
+                      <option value="">+ Schematic wählen...</option>
+                    </select>
+                    <button id="btnAddSchematicToScene" class="btn btn-primary btn-sm" type="button" title="Ausgewähltes Haus/Schematic als neues Objekt in die 3D-Welt einfügen">+ Einfügen</button>
+                  </div>
+                  <div id="sceneTreeList" class="scene-tree-list">
+                    <span class="empty-hint">Noch keine Gebäude in der Szene.</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tab 2: Transform & Terraforming Inspector für das aktive Gebäude -->
+              <div id="cadTabInspector" class="cad-tab-pane" data-tab-pane="inspector" role="tabpanel" aria-labelledby="tabBtnCadInspector">
+                <div id="sceneObjectInspector" class="studio-card hidden">
+                  <div class="studio-card-header">
+                    <span class="studio-card-title">📐 OBJEKT-INSPEKTOR</span>
+                    <button id="btnSoloActiveObject" class="btn-micro" type="button" title="Solo-Modus: Nur dieses Gebäude isoliert anzeigen [I]">🎯 Solo</button>
+                  </div>
+                  <div class="inspector-grid">
+                    <label class="inspector-field inspector-full">
+                      <span>Name:</span>
+                      <input type="text" id="inpActiveObjName" class="brush-input w-full" placeholder="Gebäudename">
+                    </label>
+                    <div class="inspector-coords-row">
+                      <label class="inspector-coord-field">
+                        <span>Welt X</span>
+                        <input type="number" id="inpObjPosX" class="brush-input" value="0">
+                      </label>
+                      <label class="inspector-coord-field">
+                        <span>Welt Y</span>
+                        <input type="number" id="inpObjPosY" class="brush-input" value="64">
+                      </label>
+                      <label class="inspector-coord-field">
+                        <span>Welt Z</span>
+                        <input type="number" id="inpObjPosZ" class="brush-input" value="0">
+                      </label>
+                    </div>
+                  </div>
+                  <div class="inspector-actions-row">
+                    <div class="btn-group">
+                      <button class="tool-btn btn-rot-preset" data-rot="0" type="button">0° (N)</button>
+                      <button class="tool-btn btn-rot-preset" data-rot="90" type="button">90° (O)</button>
+                      <button class="tool-btn btn-rot-preset" data-rot="180" type="button">180° (S)</button>
+                      <button class="tool-btn btn-rot-preset" data-rot="270" type="button">270° (W)</button>
+                    </div>
+                    <button id="btnSnapToGround" class="btn btn-secondary btn-sm w-full mt-1" type="button" title="Setzt das aktive Gebäude exakt bündig auf die gescannte Geländeoberfläche">
+                      ⚓ Snap to Ground (Boden-Ausrichtung)
+                    </button>
+                  </div>
+                </div>
+                <!-- Leerer Status-Hinweis, wenn kein Objekt ausgewählt ist -->
+                <div id="sceneInspectorEmptyHint" class="scene-inspector-empty">
+                  <div class="empty-hint-icon">📐</div>
+                  <div class="empty-hint-title">Kein Objekt ausgewählt</div>
+                  <div class="empty-hint-desc">Wähle ein Gebäude im Scene Tree oder 3D-Viewport aus, um Position, Drehung und Fundament zu bearbeiten.</div>
+                </div>
+              </div>
+
+              <!-- Tab 3: Omnipresent Spatial AI Co-Pilot -->
+              <div id="cadTabAi" class="cad-tab-pane" data-tab-pane="ai" role="tabpanel" aria-labelledby="tabBtnCadAi">
+                <div id="studioAiCopilotPanel" class="studio-card studio-ai-card">
+                  <div class="studio-card-header">
+                    <span class="studio-card-title">🧠 SPATIAL AI CO-PILOT</span>
+                    <span class="badge-sub">Scene-Aware</span>
+                  </div>
+                  <select id="selStudioAiMode" class="cad-select w-full" aria-label="KI-Modus im CAD Studio auswählen">
+                    <option value="focus_object">🎯 Fokus: Aktives Haus umbauen / Neu generieren</option>
+                    <option value="connect_landscape">🛤️ Infrastruktur: Häuser mit Wegen & Brücken verbinden</option>
+                    <option value="settlement_layout">🏘️ Siedlungs-Planer: Dorf-Layout im Gelände optimieren</option>
+                    <option value="doctor_autofix">🩺 Statik-Doktor: Höhen & Stützfundamente reparieren</option>
+                  </select>
+                  <textarea id="txtStudioAiPrompt" class="studio-ai-textarea" rows="2" placeholder="z.B. 'Baue einen Steinbalkon an dieses Haus' oder 'Verbinde alle Häuser mit beleuchteten Dorfwegen'..."></textarea>
+                  <button id="btnRunStudioAi" class="btn btn-primary btn-sm w-full" type="button">
+                    ✨ KI auf Szene anwenden
+                  </button>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
 
         <!-- Schnell-Theme-Presets Bar -->
@@ -706,30 +1100,22 @@
           </div>
         </div>
 
-        <!-- Slicer Slider -->
+        <!-- Dual Y-Slicer Slider (Litematica Etagen-Inspektor) -->
         <div class="slicer-container">
           <div class="slicer-header">
             <label for="ySliceSlider">Schnitt-Höhe Y: 1 bis Max</label>
             <span id="ySliceValue" class="slicer-val">Schnitt-Höhe Y: 1 bis Max</span>
-            <button id="btnResetSlicer" class="btn-micro" aria-label="Y-Schnitt-Höhe auf Maximum zurücksetzen">Reset</button>
+            <div class="slicer-controls">
+              <label class="cad-inline-check" title="Nur eine einzelne Etage isoliert anzeigen (Etagen-Fokus)">
+                <input type="checkbox" id="chkSingleLayerSlice">
+                <span>1-Etagen-Fokus</span>
+              </label>
+              <button id="btnSliceDown" class="btn-micro" type="button" title="Eine Ebene nach unten schneiden">◀ -1</button>
+              <button id="btnSliceUp" class="btn-micro" type="button" title="Eine Ebene nach oben einblenden">+1 ▶</button>
+              <button id="btnResetSlicer" class="btn-micro" aria-label="Y-Schnitt-Höhe auf Maximum zurücksetzen">Reset</button>
+            </div>
           </div>
           <input type="range" id="ySliceSlider" min="1" max="36" value="36" class="slider" disabled>
-        </div>
-
-        <!-- Prominente Aktionsbuttons inkl. .schem Export -->
-        <div class="build-actions-bar">
-          <button id="btnConfirmBuild" class="btn btn-success btn-large" disabled>
-            🔨 In Minecraft-Welt bauen
-          </button>
-          <button id="btnExportSchem" class="btn btn-secondary">
-            💾 Als .schem exportieren
-          </button>
-          <button id="btnUndoBuild" class="btn btn-warning">
-            ↩ Letzten Bau rückgängig (!undo)
-          </button>
-          <button id="btnStopBuild" class="btn btn-danger">
-            ⛔ Not-Stopp (!stop)
-          </button>
         </div>
 
         <!-- Collapsible Details: Blueprint & BOM -->
@@ -750,6 +1136,32 @@
             </div>
           </div>
         </details>
+
+        <!-- Prominente Aktionsbuttons inkl. Sequenzieller Bau-Warteschlange & Gesamt-Export -->
+        <div class="build-actions-bar">
+          <button id="btnConfirmBuild" class="btn btn-success btn-large" disabled>
+            🔨 In Minecraft-Welt bauen
+          </button>
+          <button id="btnStartSceneBuildQueue" class="btn btn-primary" title="Alle platzierten Gebäude der Szene nacheinander inkl. Auto-Fundament in Minecraft bauen" type="button">
+            🚀 Ganze Szene bauen (Queue)
+          </button>
+          <label class="cad-inline-check" title="Schwebende Lücken unter Gebäuden automatisch bis zum Boden mit Fundament abstützen">
+            <input type="checkbox" id="chkAutoFoundation" checked>
+            <span>Auto-Fundament</span>
+          </label>
+          <button id="btnStopBuild" class="btn btn-danger">
+            ⛔ Not-Stopp (!stop)
+          </button>
+          <button id="btnExportSchem" class="btn btn-secondary">
+            💾 Als .schem exportieren
+          </button>
+          <button id="btnExportCompositeScene" class="btn btn-secondary" title="Alle platzierten Gebäude der Szene als eine kombinierte .schem Datei exportieren" type="button">
+            📦 Szene Gesamt-Export
+          </button>
+          <button id="btnUndoBuild" class="btn btn-warning">
+            ↩ Letzten Bau rückgängig (!undo)
+          </button>
+        </div>
       </div>
     </section>
 
@@ -773,12 +1185,34 @@
               ⏹ Bot Stoppen
             </button>
           </div>
+
+          <!-- Nacht-Mechanik: Server bei Nacht verlassen -->
+          <div class="night-disconnect-row">
+            <div class="night-disconnect-info">
+              <span class="night-disconnect-icon">🌙</span>
+              <div class="night-disconnect-texts">
+                <span class="night-disconnect-title">Server bei Nacht verlassen</span>
+                <span id="lblNightDisconnectStatus" class="night-disconnect-sub">Aus (bleibt auf Server)</span>
+              </div>
+            </div>
+            <label class="switch-toggle" title="Server bei Nacht ohne Bett verlassen: Aktiv = Bot leavt für Nacht-Skip / Aus = Bot bleibt nachts online">
+              <input type="checkbox" id="toggleNightDisconnect">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
         </div>
       </div>
 
       <!-- Live-Fortschritt & Telemetrie -->
       <div class="telemetry-card">
         <div class="telemetry-grid">
+          <div class="tel-item tel-item-activity">
+            <span class="tel-label">Bot-Aktivität</span>
+            <div class="tel-activity-row">
+              <span id="lblBotActivityBadge" class="activity-badge idle">● Bereit</span>
+              <span id="lblBotActivityDetails" class="activity-sub">Wartet auf Befehl</span>
+            </div>
+          </div>
           <div class="tel-item">
             <span class="tel-label">Position</span>
             <span id="lblBotPos" class="tel-val">X: 0, Y: 0, Z: 0</span>
@@ -809,11 +1243,75 @@
         </div>
       </div>
 
-      <!-- Architekten-Chat -->
+      <!-- Architekten-Chat & Bot-Kommandozentrale -->
       <div class="chat-card">
         <div class="chat-header">
           <h3>💬 Architekten-Dialog</h3>
           <span class="chat-sub">Echtzeit-KI Steuerung</span>
+        </div>
+
+        <!-- Interaktives Bot-Kommando & Schnell-Aktions-Deck (1-Klick Missionen) -->
+        <div id="botCommandDeck" class="bot-command-deck">
+          <div class="deck-header">
+            <span class="deck-title">⚡ BOT-SCHNELLBEFEHLE (1-KLICK MISSIONEN)</span>
+            <span class="badge-sub">Echtzeit-Ausführung</span>
+          </div>
+          
+          <div class="deck-categories">
+            <!-- Gruppe 1: Schutz & Basis -->
+            <div class="deck-group">
+              <span class="deck-group-label">🛡️ Schutz &amp; Basis:</span>
+              <div class="deck-buttons-row">
+                <button type="button" class="btn-bot-command btn-cmd-guard" data-command="verteidige diesen bereich und töte alle monster" data-instant="true" title="Bot bewacht den aktuellen Bereich und bekämpft alle Monster">
+                  <span class="cmd-icon">⚔️</span> Wachdienst
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-expedition" data-command="gehe auf minen-expedition nach eisen und diamanten" data-instant="true" title="Bot sucht autonom Höhlen auf und sammelt Erze">
+                  <span class="cmd-icon">🧭</span> Expedition
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-home" data-command="merke dir diesen ort als basis" data-instant="true" title="Speichert die aktuelle Position als Heimatbasis (!sethome)">
+                  <span class="cmd-icon">🏠</span> Basis setzen
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-home" data-command="komm nach hause zur basis" data-instant="true" title="Bot kehrt sofort sicher zur Heimatbasis zurück (!home)">
+                  <span class="cmd-icon">🏡</span> Zur Basis
+                </button>
+              </div>
+            </div>
+
+            <!-- Gruppe 2: Farmen & Vorräte -->
+            <div class="deck-group">
+              <span class="deck-group-label">⛏️ Farmen &amp; Logistik:</span>
+              <div class="deck-buttons-row">
+                <button type="button" class="btn-bot-command btn-cmd-harvest" data-command="fälle bäume und sammle holz im umkreis" data-instant="true" title="Bot fällt Holzstämme im Umkreis und sammelt Drops">
+                  <span class="cmd-icon">🌲</span> Holz fällen
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-harvest" data-command="baue alle eisenerz vorkommen in deiner nähe ab" data-instant="true" title="Bot baut sichtbare Erzadern in der Nähe sicher ab">
+                  <span class="cmd-icon">⛏️</span> Eisenerz
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-logistics" data-command="schmilz alle roherze im ofen" data-instant="true" title="Bot befüllt Ofen mit Brennstoff und schmilzt Erze">
+                  <span class="cmd-icon">🔥</span> Schmelzen
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-logistics" data-command="räume dein inventar in die kisten" data-instant="true" title="Bot sortiert Erze, Werkzeuge und Drops in Kisten ein (!deposit)">
+                  <span class="cmd-icon">📦</span> Sortieren
+                </button>
+              </div>
+            </div>
+
+            <!-- Gruppe 3: Navigation & Kontrolle -->
+            <div class="deck-group">
+              <span class="deck-group-label">🚶 Steuerung &amp; Not-Stopp:</span>
+              <div class="deck-buttons-row">
+                <button type="button" class="btn-bot-command btn-cmd-follow" data-command="komm zu mir" data-instant="true" title="Bot läuft direkt zu deiner aktuellen Spielerposition">
+                  <span class="cmd-icon">👣</span> Komm zu mir
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-stop" data-command="!stop" data-instant="true" title="Stoppt sofort alle Aktionen (Bauen, Mining, Wachdienst, Laufen)">
+                  <span class="cmd-icon">🛑</span> Not-Stopp
+                </button>
+                <button type="button" class="btn-bot-command btn-cmd-status" data-command="zeige status und lebenspunkte" data-instant="true" title="Fragt Status, HP, Hunger und Vorräte ab">
+                  <span class="cmd-icon">ℹ️</span> Status
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div id="chatMessages" class="chat-messages">
@@ -825,6 +1323,14 @@
 
         <!-- Prompt Quick-Chips -->
         <div class="quick-chips">
+          <button class="chip" data-prompt="🧭 Gehe auf Minen-Expedition nach Eisen und Diamanten">🧭 Expedition</button>
+          <button class="chip" data-prompt="🏠 Merke dir diesen Ort als Basis">🏠 Basis setzen</button>
+          <button class="chip" data-prompt="🏡 Komm nach Hause zur Basis">🏡 Zur Basis</button>
+          <button class="chip" data-prompt="🔥 Schmilz alle Roherze im Ofen">🔥 Schmelzen</button>
+          <button class="chip" data-prompt="📦 Räume dein Inventar in die Kisten">📦 Beute einsortieren</button>
+          <button class="chip" data-prompt="Verteidige diesen Bereich und töte alle Monster">🛡️ Verteidigung</button>
+          <button class="chip" data-prompt="Baue alle Eisenerz Vorkommen in deiner Nähe ab">⛏️ Eisenerz abbauen</button>
+          <button class="chip" data-prompt="Fälle Bäume und sammle Holz im Umkreis">🌲 Holz fällen</button>
           <button class="chip" data-prompt="Dach steiler machen und mit Schornstein ausstatten">Dach steiler</button>
           <button class="chip" data-prompt="Mehr Fenster, Fensterläden und Blumenkästen anbringen">Mehr Fenster</button>
           <button class="chip" data-prompt="Einen runden Wehrturm mit Zinnen an die Ecke anbauen">Turm anbauen</button>
@@ -833,8 +1339,14 @@
 
         <!-- Selection Box Notice Badge -->
         <div id="selectionBadgeNotice" class="selection-box-badge hidden">
-          <span>🎯 Lokaler KI-Edit aktiv: <strong id="lblSelectionCoords">(0..10, 0..10, 0..10)</strong></span>
-          <button id="btnClearSelectionBox" class="btn-micro" type="button" title="Auswahl aufheben" aria-label="Aktiven 3D-Auswahlbereich aufheben">✕</button>
+          <div class="selection-badge-left">
+            <span>🎯 3D-Bereich: <strong id="lblSelectionCoords">(0..10, 0..10, 0..10)</strong></span>
+          </div>
+          <div class="selection-badge-actions">
+            <button id="btnFillSelection" class="btn btn-secondary btn-sm" type="button" title="Gesamten 3D-Bereich mit aktuellem Pinsel-Block füllen">🪣 Füllen</button>
+            <button id="btnClearSelection" class="btn btn-danger btn-sm" type="button" title="Alle Blöcke in diesem 3D-Bereich löschen">🧹 Leeren</button>
+            <button id="btnClearSelectionBox" class="btn-micro" type="button" title="Auswahlrahmen aufheben" aria-label="Aktiven 3D-Auswahlbereich aufheben">✕</button>
+          </div>
         </div>
 
         <!-- Chat Input Form -->
@@ -854,8 +1366,8 @@
               autocomplete="off"
               aria-label="Architekten-Bauauftrag oder Prompt eingeben"
             >
-            <button type="submit" id="btnSendPrompt" class="btn btn-primary">
-              Planen
+            <button type="submit" id="btnSendPrompt" class="btn btn-primary" title="Befehl ausführen oder Bauwerk planen (Enter)">
+              ⚡ Senden / Planen
             </button>
           </div>
         </form>
@@ -1057,6 +1569,15 @@
             <p class="step-desc">
               Auf welchem Server soll dein Architekt-Bot platziert werden?
             </p>
+
+            <div id="obLanDetectionNotice" class="lan-discovery-box mb-2 hidden">
+              <div class="lan-box-header">
+                <span class="lan-box-title">🎮 Minecraft LAN-Welt erkannt:</span>
+                <span class="lan-scan-badge">224.0.2.60:4445</span>
+              </div>
+              <div id="obLanWorldsList" class="lan-worlds-list"></div>
+            </div>
+
             <div class="form-row mt-2">
               <div class="form-group flex-2">
                 <label for="obHost">Server-Adresse / IP (MC_HOST):</label>
@@ -1196,9 +1717,9 @@
                 Autonomes Ressourcen-Farming (Holz &amp; Stein)
               </label>
               <label class="checkbox-container mt-1">
-                <input type="checkbox" id="obChkSleep" checked>
+                <input type="checkbox" id="obChkSleep">
                 <span class="checkmark"></span>
-                Bei Nacht automatisch ein Bett aufsuchen
+                Bei Nacht ohne Bett Server verlassen (Nacht-Skip)
               </label>
               <label class="checkbox-container mt-1">
                 <input type="checkbox" id="obChkHandoff" checked>
@@ -1241,14 +1762,30 @@
       <!-- Modal Body (4 Zonen) -->
       <div class="cad-modal-body modal-cad-body">
         
-        <!-- ZONE 1: Tier-Zuweisung & Global Status -->
+        <!-- ZONE 1: Smart Routing-Profile & 5 Task-Rollen Matrix -->
         <section id="zoneTierAssignment" class="settings-zone zone-container zone-tier">
           <div class="zone-header">
-            <span class="zone-title">ZONE 1: GLOBAL MODEL STATUS &amp; TIER ASSIGNMENT</span>
-            <span id="tierAssignmentSyncBadge" class="status-pill-cad healthy badge-sub">Auto-Sync aktiv</span>
+            <span class="zone-title">ZONE 1: SMART ROUTING-PROFILE &amp; 5 TASK-ROLLEN MATRIX</span>
+            <span id="tierAssignmentSyncBadge" class="status-pill-cad healthy badge-sub">Routing v3.0 Aktiv</span>
           </div>
-          
-          <div class="tier-selection-grid tier-grid">
+
+          <!-- Profile Selector Bar -->
+          <div class="routing-profile-bar">
+            <span class="profile-bar-label">Globales Routing-Profil:</span>
+            <div class="profile-buttons-group">
+              <button type="button" id="btnProfileEco" class="btn-profile-pill active" data-profile="eco">🌱 Eco / Free-First</button>
+              <button type="button" id="btnProfileBalanced" class="btn-profile-pill" data-profile="balanced">⚖️ Balanced Value</button>
+              <button type="button" id="btnProfileQuality" class="btn-profile-pill" data-profile="quality">👑 Max Quality</button>
+            </div>
+          </div>
+
+          <!-- 5 Task-Rollen Matrix Grid -->
+          <div id="roleMatrixGrid" class="role-matrix-grid mt-2">
+            <!-- Dynamisch über modelCockpit.js befüllt -->
+          </div>
+
+          <!-- Legacy Fast/Architect Tier Zuweisung & Fallback -->
+          <div class="tier-selection-grid tier-grid mt-2">
             <!-- Fast Tier Selection -->
             <div class="tier-col tier-card">
               <div class="tier-label-group">
@@ -1275,7 +1812,7 @@
           </div>
 
           <!-- Zero-Key Emergency Fallback Toggle -->
-          <div class="fallback-toggle-row zone-footer-row">
+          <div class="fallback-toggle-row zone-footer-row mt-2">
             <label class="checkbox-container">
               <input type="checkbox" id="toggleZeroKeyEmergency" checked>
               <span class="checkmark"></span>
@@ -1366,6 +1903,20 @@
             </div>
           </div>
 
+          <!-- Token- & Kosten-Tracking Box v3.0 -->
+          <div id="tokenCostTelemetryBox" class="token-cost-telemetry-box mt-2">
+            <div class="token-cost-header">
+              <span class="cost-title">📊 Token-Verbrauch &amp; Kosten-Statistik</span>
+              <span id="txtTotalCostDisplay" class="cost-total-badge">$0.000 USD (99% Free-Tier)</span>
+            </div>
+            <div class="token-stats-row">
+              <div class="stat-pill"><span class="stat-lbl">Prompt Tokens:</span> <strong id="valPromptTokens">0</strong></div>
+              <div class="stat-pill"><span class="stat-lbl">Completion Tokens:</span> <strong id="valCompletionTokens">0</strong></div>
+              <div class="stat-pill"><span class="stat-lbl">Gesamte Anfragen:</span> <strong id="valTotalRequests">0</strong></div>
+            </div>
+            <div id="roleTelemetryBars" class="role-telemetry-bars mt-1"></div>
+          </div>
+
           <!-- Fehler-Alarm-Banner (Standard: ausgeblendet) -->
           <div id="bannerModelError" class="model-error-banner hidden" role="alert">
             <div class="banner-icon">⚠️</div>
@@ -1406,15 +1957,42 @@
         <label for="selEndpointProvider" class="control-label">Provider:</label>
         <select id="selEndpointProvider" class="cad-select drawer-input">
           <option value="GitHub">🐙 GitHub Models (RFC 8628 Device Flow)</option>
-          <option value="OpenRouter">🌐 OpenRouter (Universal AI Gateway)</option>
-          <option value="Cerebras">⚡ Cerebras Cloud (High-Speed LPU)</option>
-          <option value="Groq">🚀 GroqCloud (Ultra-Fast LPU)</option>
-          <option value="Mistral">🌪️ Mistral AI / Codestral</option>
-          <option value="Gemini">💎 Google Gemini</option>
-          <option value="Ollama">🦙 Ollama (Lokal)</option>
-          <option value="LMStudio">🧪 LM Studio (Lokal)</option>
-          <option value="Custom">🔌 Custom OpenAI-compatible</option>
+          <option value="OpenRouter">🌐 OpenRouter (OAuth PKCE / Universal Gateway)</option>
+          <option value="Cerebras">⚡ Cerebras Cloud (High-Speed LPU ~2.600 tok/s)</option>
+          <option value="Groq">🚀 GroqCloud (Ultra-Fast Low-Latency LPU)</option>
+          <option value="Mistral">🌪️ Mistral AI / Codestral (Code-Synthese SOTA)</option>
+          <option value="Gemini">💎 Google Gemini (Google AI Studio Free Tier)</option>
+          <option value="SambaNova">🐆 SambaNova Cloud (DeepSeek-V3 / R1)</option>
+          <option value="Cloudflare">☁️ Cloudflare Workers AI (10k Neurons/Tag)</option>
+          <option value="NVIDIA">🟢 NVIDIA NIM (Nemotron &amp; Llama 3.3)</option>
+          <option value="SiliconFlow">🌊 SiliconFlow (Qwen &amp; DeepSeek L0 Tier)</option>
+          <option value="Zhipu">🇨🇳 Zhipu AI BigModel (GLM-4 Flash)</option>
+          <option value="HuggingFace">🤗 Hugging Face Router (:fastest Open-Source)</option>
+          <option value="OpenAI">🧠 OpenAI Platform (Direct Platform API)</option>
+          <option value="Ollama">🦙 Ollama (Lokal / 100% Offline)</option>
+          <option value="LMStudio">🧪 LM Studio (Lokal / GUI)</option>
+          <option value="Custom">🔌 Custom OpenAI-compatible Proxy</option>
         </select>
+      </div>
+
+      <!-- Interaktive Provider-Hilfe & Dashboard-Direktlink -->
+      <div id="boxProviderGuidance" class="provider-guidance-card">
+        <div class="guidance-header">
+          <div class="guidance-title-row">
+            <span id="txtGuidanceIcon" class="guidance-icon">⚡</span>
+            <span id="txtGuidanceProviderName" class="guidance-name">Cerebras Cloud</span>
+          </div>
+          <a id="btnGuidanceDashboardLink" href="https://cloud.cerebras.ai/platform/" target="_blank" rel="noopener noreferrer" class="guidance-dashboard-btn" title="Dashboard in neuem Tab öffnen">
+            🔑 API-Key im Dashboard erstellen ↗
+          </a>
+        </div>
+        <p id="txtGuidanceDescription" class="guidance-desc">
+          Bis zu 2.600 Tokens/Sekunde &amp; 1 Mio. Tokens/Tag gratis! Kein Zahlungsmittel erforderlich.
+        </p>
+        <div class="guidance-models-row">
+          <span class="text-2xs text-muted">Empfohlene Modelle (Klick übernimmt Modell-ID):</span>
+          <div id="containerGuidanceModelTags" class="model-tags-list"></div>
+        </div>
       </div>
 
       <div class="form-group">
@@ -1598,6 +2176,38 @@
     </div>
   </div>
 
+  <!-- Dashboard Glassmorphic Toast Notifications Container -->
+  <div id="dashboardToastContainer" class="dashboard-toast-container" aria-live="polite"></div>
+
   <script src="app.js" type="module"></script>
+  <script>
+    // CAD Studio Sidebar Tab Navigation
+    (function initCadSidebarTabs() {
+      function attachTabListeners() {
+        const sidebarTabs = document.querySelectorAll('.cad-sidebar-tab');
+        const sidebarPanes = document.querySelectorAll('.cad-tab-pane');
+        const cadSidebar = document.getElementById('cadStudioSidebar');
+        sidebarTabs.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const target = btn.dataset.tab;
+            sidebarTabs.forEach(b => {
+              const isActive = (b === btn);
+              b.classList.toggle('active', isActive);
+              b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            });
+            sidebarPanes.forEach(pane => {
+              pane.classList.toggle('active', pane.dataset.tabPane === target);
+            });
+            if (cadSidebar) cadSidebar.setAttribute('data-active-tab', target);
+          });
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachTabListeners);
+      } else {
+        attachTabListeners();
+      }
+    })();
+  </script>
 </body>
 </html>

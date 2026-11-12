@@ -2,6 +2,7 @@ import mcProtocol from 'minecraft-protocol';
 import { settings } from '../config/settings.js';
 import { logger } from '../utils/logger.js';
 import { worldExecutor } from '../builder/worldExecutor.js';
+import { extractMinecraftChatText } from '../utils/stringUtils.js';
 
 export const HANDOFF_STATES = {
   ONLINE_ACTIVE: 'ONLINE_ACTIVE',
@@ -46,8 +47,9 @@ export class SessionHandoff {
 
   isDuplicateLoginReason(reason) {
     if (!reason) return false;
-    const str = typeof reason === 'object' ? JSON.stringify(reason) : String(reason);
-    const lower = str.toLowerCase();
+    const clean = extractMinecraftChatText(reason).toLowerCase();
+    const raw = (typeof reason === 'object' ? JSON.stringify(reason) : String(reason)).toLowerCase();
+    const lower = `${clean} ${raw}`;
     return (
       lower.includes('multiplayer.disconnect.duplicate_login') ||
       lower.includes('logged in from another location') ||

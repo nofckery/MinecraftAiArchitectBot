@@ -34,11 +34,44 @@ export const COMMON_STONE_TYPES = [
   'granite'
 ];
 
+export const COMMON_ORE_MAP = {
+  iron_ore: ['iron_ore', 'deepslate_iron_ore'],
+  coal_ore: ['coal_ore', 'deepslate_coal_ore'],
+  copper_ore: ['copper_ore', 'deepslate_copper_ore'],
+  gold_ore: ['gold_ore', 'deepslate_gold_ore', 'nether_gold_ore'],
+  diamond_ore: ['diamond_ore', 'deepslate_diamond_ore'],
+  redstone_ore: ['redstone_ore', 'deepslate_redstone_ore'],
+  lapis_ore: ['lapis_ore', 'deepslate_lapis_ore'],
+  emerald_ore: ['emerald_ore', 'deepslate_emerald_ore'],
+  nether_quartz_ore: ['nether_quartz_ore'],
+  ancient_debris: ['ancient_debris'],
+  any_ore: [
+    'iron_ore', 'deepslate_iron_ore',
+    'coal_ore', 'deepslate_coal_ore',
+    'copper_ore', 'deepslate_copper_ore',
+    'gold_ore', 'deepslate_gold_ore',
+    'diamond_ore', 'deepslate_diamond_ore',
+    'redstone_ore', 'deepslate_redstone_ore',
+    'lapis_ore', 'deepslate_lapis_ore',
+    'emerald_ore', 'deepslate_emerald_ore'
+  ]
+};
+
 /**
  * HarvestManager provides modular interfaces and implementations for autonomous
  * gathering of raw building materials (wood felling, stone quarrying, tool selection).
  */
 export class HarvestManager {
+  constructor() {
+    this.isHarvesting = false;
+    this.abortSignal = false;
+  }
+
+  abort() {
+    this.abortSignal = true;
+    this.isHarvesting = false;
+    logger.info('[HarvestManager] Abbauvorgang durch Not-Stopp abgebrochen.');
+  }
   /**
    * Determines the optimal tool category for a block and equips the highest-tier tool available.
    *
@@ -250,6 +283,193 @@ export class HarvestManager {
       success: harvested >= targetCount,
       harvested,
       targetCount
+    };
+  }
+
+  /**
+   * Sammelt gedroppte Items (z. B. Roheisen, Kohle, Holz) in der näheren Umgebung ein.
+   *
+   * @param {Object} bot Mineflayer bot instance
+   * @param {number} radius Suchradius für Drops
+   * @returns {Promise<number>} Anzahl aufgesammelter Drop-Entitäten
+   */
+  async collectNearbyDrops(bot, radius = 5.0) {
+    if (!bot?.entities || !bot?.entity?.position || !bot.pathfinder) return 0;
+    let collectedCount = 0;
+    const botPos = bot.entity.position;
+    const goals = await getPathfinderGoals();
+
+    for (const id in bot.entities) {
+      if (this.abortSignal) break;
+      const ent = bot.entities[id];
+      if (!ent || !ent.position) continue;
+      const isItem = ent.name === 'item' || ent.displayName === 'Item' || ent.objectType === 'Item';
+      if (!isItem) continue;
+
+      const dist = botPos.distanceTo(ent.position);
+      if (dist <= radius) {
+        try {
+          if (goals?.GoalNear) {
+            await bot.pathfinder.goto(new goals.GoalNear(ent.position.x, ent.position.y, ent.position.z, 0.6));
+            collectedCount++;
+          }
+        } catch {
+          // Safe ignore falls Item bereits aufgesaugt oder unerreichbar
+        }
+      }
+    }
+    return collectedCount;
+  }
+
+  /**
+   * Sucht und baut gezielt Erze (z. B. Eisenerz, Kohle, Diamant) im Umkreis ab.
+   *
+   * @param {Object} bot Mineflayer bot instance
+   * @param {string} oreType Erztyp (z. B. 'iron_ore', 'coal_ore', 'any_ore')
+   * @param {number} targetCount Maximale Anzahl abzubauender Blöcke
+   * @param {number} radius Suchradius um den Bot
+   * @param {Object} options Optionen (chatAlerts, onProgress)
+   * @returns {Promise<{ success: boolean, harvested: number, targetCount: number, oreType: string }>}
+   */
+  async harvestOres(bot, oreType = 'iron_ore', targetCount = 32, radius = 32, options = {}) {
+    if (!bot || typeof bot.findBlocks !== 'function') {
+      return { success: false, harvested: 0, targetCount, oreType };
+    }
+
+    this.isHarvesting = true;
+    this.abortSignal = false;
+    const chatAlerts = options.chatAlerts !== false;
+
+    VersionResolver.applyCompatibilityShims();
+    const ver = bot.version === '26.3' ? '26.1' : (bot.version || '1.20.4');
+    const mcData = minecraftData(ver);
+    if (!mcData) {
+      this.isHarvesting = false;
+      return { success: false, harvested: 0, targetCount, oreType };
+    }
+
+    // Erznamensauflösung
+    const matchingOreNames = COMMON_ORE_MAP[oreType] || (oreType === 'any' ? COMMON_ORE_MAP.any_ore : [oreType]);
+    const oreIds = matchingOreNames
+      .map(name => mcData.blocksByName[name]?.id)
+      .filter(id => id !== undefined && id !== null);
+
+    if (oreIds.length === 0) {
+      logger.warn(`[HarvestManager] Unbekannter oder nicht auflösbarer Erztyp: '${oreType}'`);
+      this.isHarvesting = false;
+      return { success: false, harvested: 0, targetCount, oreType };
+    }
+
+    const orePositions = bot.findBlocks({
+      matching: oreIds,
+      maxDistance: radius,
+      count: targetCount * 2
+    });
+
+    if (!orePositions || orePositions.length === 0) {
+      const msg = `Keine Erzvorkommen (${matchingOreNames.join(', ')}) im Umkreis von ${radius}m gefunden.`;
+      logger.info(`[HarvestManager] ${msg}`);
+      if (chatAlerts && typeof bot.chat === 'function') {
+        bot.chat(`[Mining] ${msg}`);
+      }
+      this.isHarvesting = false;
+      return { success: false, harvested: 0, targetCount, oreType };
+    }
+
+    // Sortiere nach Distanz zum Bot
+    const botPos = bot.entity?.position ? bot.entity.position.floored() : null;
+    if (botPos) {
+      orePositions.sort((a, b) => botPos.distanceTo(a) - botPos.distanceTo(b));
+    }
+
+    const startMsg = `Starte Abbau von bis zu ${targetCount}x ${oreType} (${orePositions.length} Vorkommen im Radius ${radius}m lokalisiert)...`;
+    logger.info(`[HarvestManager] ${startMsg}`);
+    if (chatAlerts && typeof bot.chat === 'function') {
+      bot.chat(`[Mining] ${startMsg}`);
+    }
+
+    let harvested = 0;
+
+    for (const pos of orePositions) {
+      if (this.abortSignal || harvested >= targetCount) break;
+
+      // Sicherheitsregel: Niemals den Block direkt unter den eigenen Füßen abbauen (Fall-Schutz)!
+      if (botPos && pos.x === botPos.x && pos.z === botPos.z && pos.y <= botPos.y) {
+        continue;
+      }
+
+      const block = typeof bot.blockAt === 'function' ? bot.blockAt(pos) : null;
+      if (!block || block.name === 'air') continue;
+
+      // Prüfung auf Lava in direkter Nachbarschaft
+      if (typeof bot.blockAt === 'function') {
+        const neighbors = [
+          bot.blockAt(pos.offset(0, 1, 0)),
+          bot.blockAt(pos.offset(1, 0, 0)),
+          bot.blockAt(pos.offset(-1, 0, 0)),
+          bot.blockAt(pos.offset(0, 0, 1)),
+          bot.blockAt(pos.offset(0, 0, -1))
+        ];
+        const hasLavaDanger = neighbors.some(n => n && (n.name === 'lava' || n.name === 'flowing_lava'));
+        if (hasLavaDanger) {
+          logger.warn(`[HarvestManager] Überspringe Erz bei ${pos}: Lava in direkter Nachbarschaft!`);
+          continue;
+        }
+      }
+
+      // Heranlaufen wenn nötig
+      if (bot.entity?.position && typeof bot.entity.position.distanceTo === 'function') {
+        const currentDist = bot.entity.position.distanceTo(pos);
+        if (currentDist > 3.5 && bot.pathfinder) {
+          try {
+            const goals = await getPathfinderGoals();
+            if (goals) {
+              await bot.pathfinder.goto(new goals.GoalNear(pos.x, pos.y, pos.z, 2.2));
+            }
+          } catch (moveErr) {
+            logger.debug(`[HarvestManager] Konnte Erz bei ${pos} nicht anlaufen: ${moveErr.message}`);
+            continue;
+          }
+        }
+      }
+
+      if (this.abortSignal) break;
+
+      // Spitzhacke ausrüsten und graben
+      await this.prepareToolForBlock(bot, block);
+      try {
+        if (typeof bot.dig === 'function') {
+          await bot.dig(block);
+          harvested++;
+          logger.info(`[HarvestManager] Erz abgebaut: ${block.name} bei (${pos.x}, ${pos.y}, ${pos.z}) [${harvested}/${targetCount}].`);
+
+          // Dropped Items in Reichweite einsammeln
+          await this.collectNearbyDrops(bot, 5.0);
+
+          if (typeof options.onProgress === 'function') {
+            options.onProgress({ harvested, targetCount, currentBlock: block.name });
+          }
+        }
+      } catch (digErr) {
+        logger.debug(`[HarvestManager] Abbaufehler bei ${pos}: ${digErr.message}`);
+      }
+    }
+
+    const endMsg = this.abortSignal
+      ? `Mining-Auftrag abgebrochen. Insgesamt ${harvested} Blöcke abgebaut.`
+      : `Mining-Auftrag abgeschlossen: ${harvested}x ${oreType} abgebaut!`;
+
+    logger.info(`[HarvestManager] ${endMsg}`);
+    if (chatAlerts && typeof bot.chat === 'function') {
+      bot.chat(`[Mining] ${endMsg}`);
+    }
+
+    this.isHarvesting = false;
+    return {
+      success: harvested > 0,
+      harvested,
+      targetCount,
+      oreType
     };
   }
 

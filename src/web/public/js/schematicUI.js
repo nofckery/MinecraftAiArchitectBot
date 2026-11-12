@@ -43,6 +43,16 @@ export async function loadSchematicsList() {
       const actions = document.createElement('div');
       actions.className = 'schem-file-actions';
 
+      const addSceneBtn = document.createElement('button');
+      addSceneBtn.className = 'btn btn-primary btn-sm';
+      addSceneBtn.textContent = '+ Szene';
+      addSceneBtn.title = 'Als zusätzliches Gebäude in die 3D-Weltszene einfügen';
+      addSceneBtn.onclick = () => {
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(new CustomEvent('cad:add-schematic', { detail: { filename: f.name } }));
+        }
+      };
+
       const loadBtn = document.createElement('button');
       loadBtn.className = 'btn btn-secondary btn-sm';
       loadBtn.textContent = '3D-Editor';
@@ -59,6 +69,7 @@ export async function loadSchematicsList() {
         window.open(`/api/schematics/export/${encodeURIComponent(f.name.replace(/\.[^/.]+$/, ''))}`);
       };
 
+      actions.appendChild(addSceneBtn);
       actions.appendChild(loadBtn);
       actions.appendChild(dlBtn);
       item.appendChild(info);

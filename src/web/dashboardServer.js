@@ -1,10 +1,5 @@
 import http from 'node:http';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import express from 'express';
-import multer from 'multer';
 import { WebSocketServer, WebSocket } from 'ws';
-import prismarineViewer from 'prismarine-viewer';
 
 import { settings } from '../config/settings.js';
 import { logger } from '../utils/logger.js';
@@ -15,29 +10,26 @@ import { VoxelCanvas } from '../builder/voxelCanvas.js';
 import { StructuralLinter } from '../builder/structuralLinter.js';
 import { sessionHandoff } from '../bot/sessionHandoff.js';
 import { llmRouter } from '../ai/llmRouter.js';
-import { EndpointManager } from '../ai/endpointManager.js';
-import { SafeProbeWorker } from '../ai/safeProbeWorker.js';
-import { DeviceFlowManager } from '../security/deviceFlowManager.js';
-import { localModelScanner, LocalModelScanner } from '../ai/localModelScanner.js';
 import { envManager } from '../config/envManager.js';
 import { serverRights } from '../bot/serverRights.js';
 import { msaAuthManager } from '../security/msaAuthManager.js';
-import { VersionResolver } from '../config/versionResolver.js';
-import { ViewerStateTranslator } from './services/viewerStateTranslator.js';
 
 import { generateAreaMapData, generateTerrainXray } from './services/terrainMapService.js';
 import { registerBaseRoutes } from './routes/baseRoutes.js';
 import { registerSchematicRoutes } from './routes/schematicRoutes.js';
+import { registerCadStudioRoutes } from './routes/cadStudioRoutes.js';
 import { registerModelApiRoutes } from './routes/modelRoutes.js';
 import { handleClientWsMessage } from './ws/dashboardWsDispatcher.js';
 import { manualController } from '../bot/manualController.js';
 import { sanitizeViewerEntity, SUPPORTED_VIEWER_ENTITIES } from './services/viewerEntitySanitizer.js';
 import { buildBotTelemetry } from './services/dashboardTelemetryService.js';
+import { lanDiscoveryService } from '../network/lanDiscoveryService.js';
+
+import { startViewer, stopViewer, setViewerEnabled } from './server/viewerService.js';
+import { ensureServices, wireServiceEvents } from './server/dashboardServiceWire.js';
+import { setupExpressApp } from './server/dashboardAppSetup.js';
 
 export { sanitizeViewerEntity, SUPPORTED_VIEWER_ENTITIES };
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export class DashboardServer {
   constructor(options = {}) {
@@ -60,6 +52,7 @@ export class DashboardServer {
     this.endpointManager = options.endpointManager || null;
     this.safeProbeWorker = options.safeProbeWorker || null;
     this.deviceFlowManager = options.deviceFlowManager || null;
+    this.pkceAuthManager = options.pkceAuthManager || null;
     this.localModelScanner = options.localModelScanner || null;
     this.llmRouter = options.llmRouter || null;
     this._eventsWired = false;
@@ -88,6 +81,7 @@ export class DashboardServer {
     if (services.endpointManager) this.endpointManager = services.endpointManager;
     if (services.safeProbeWorker) this.safeProbeWorker = services.safeProbeWorker;
     if (services.deviceFlowManager) this.deviceFlowManager = services.deviceFlowManager;
+    if (services.pkceAuthManager) this.pkceAuthManager = services.pkceAuthManager;
     if (services.localModelScanner) this.localModelScanner = services.localModelScanner;
     if (services.llmRouter) this.llmRouter = services.llmRouter;
 
@@ -95,166 +89,15 @@ export class DashboardServer {
   }
 
   async ensureServices() {
-    if (!this.endpointManager) {
-      this.endpointManager = new EndpointManager();
-      await this.endpointManager.init();
-    }
-    if (!this.safeProbeWorker) {
-      this.safeProbeWorker = new SafeProbeWorker();
-    }
-    if (!this.localModelScanner) {
-      this.localModelScanner = localModelScanner || new LocalModelScanner();
-    }
-    if (!this.deviceFlowManager) {
-      this.deviceFlowManager = new DeviceFlowManager({
-        endpointManager: this.endpointManager,
-        llmRouter: this.llmRouter || llmRouter
-      });
-    }
-
-    this.wireServiceEvents();
+    return ensureServices(this);
   }
 
   wireServiceEvents() {
-    if (this._eventsWired) return;
-    this._eventsWired = true;
-
-    if (this.endpointManager) {
-      this.endpointManager.on('endpoint_status_change', (evt) => {
-        this.broadcast({ type: 'endpoint_status_change', ...evt });
-      });
-      this.endpointManager.on('tier_activated', (evt) => {
-        this.broadcast({ type: 'tier_activated', ...evt });
-      });
-      this.endpointManager.on('endpoint_created', (ep) => {
-        this.broadcast({ type: 'endpoint_created', endpoint: ep });
-      });
-      this.endpointManager.on('endpoint_updated', (ep) => {
-        this.broadcast({ type: 'endpoint_updated', endpoint: ep });
-      });
-      this.endpointManager.on('endpoint_deleted', (id) => {
-        this.broadcast({ type: 'endpoint_deleted', id });
-      });
-    }
-
-    if (this.safeProbeWorker) {
-      this.safeProbeWorker.on('progress', (prog) => {
-        this.broadcast({ type: 'probe_progress', ...prog });
-      });
-    }
-
-    if (this.deviceFlowManager) {
-      this.deviceFlowManager.on('authenticated', (evt) => {
-        this.broadcast({ type: 'device_auth_success', ...evt });
-      });
-      this.deviceFlowManager.on('device_auth_success', (evt) => {
-        this.broadcast({ type: 'device_auth_success', ...evt });
-      });
-    }
-
-    // Microsoft Authentication Events
-    msaAuthManager.on('code', (session) => {
-      this.broadcast({
-        type: 'msa_code',
-        userCode: session.userCode,
-        verificationUri: session.verificationUri,
-        directUrl: session.directUrl,
-        expiresIn: session.expiresIn,
-        message: session.message,
-        username: session.username
-      });
-    });
-
-    msaAuthManager.on('success', (session) => {
-      this.broadcast({
-        type: 'msa_success',
-        username: session.profile?.name || session.username,
-        profile: session.profile
-      });
-    });
-
-    msaAuthManager.on('error', (err) => {
-      this.broadcast({
-        type: 'msa_error',
-        error: err.error || err.message,
-        username: err.username
-      });
-    });
+    return wireServiceEvents(this);
   }
 
   setupApp() {
-    if (this.app) return this.app;
-    this.app = express();
-
-    // 1. Zero-CORS & Zero-PNA Middleware
-    this.app.use('/api', (req, res, next) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-dashboard-token');
-      res.setHeader('Access-Control-Allow-Private-Network', 'true');
-      if (req.method === 'OPTIONS') return res.sendStatus(204);
-      next();
-    });
-
-    // 1b. Dashboard Password Protection (if configured in settings)
-    if (settings.DASHBOARD_PASSWORD && settings.DASHBOARD_PASSWORD.length > 0) {
-      this.app.use('/api', (req, res, next) => {
-        if (req.path === '/auth/status' || req.path === '/auth/login') {
-          return next();
-        }
-        const authHeader = req.headers.authorization || '';
-        const token = req.headers['x-dashboard-token'] ||
-          (authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null) ||
-          req.query?.token ||
-          req.query?.auth;
-
-        if (token === settings.DASHBOARD_PASSWORD) {
-          return next();
-        }
-        return res.status(401).json({
-          success: false,
-          error: 'Unauthorized: Gültiges Dashboard-Passwort erforderlich.'
-        });
-      });
-    }
-
-    this.app.get('/api/auth/status', (req, res) => {
-      res.json({
-        passwordProtected: Boolean(settings.DASHBOARD_PASSWORD && settings.DASHBOARD_PASSWORD.length > 0)
-      });
-    });
-
-    this.app.post('/api/auth/login', (req, res) => {
-      const { password } = req.body || {};
-      if (!settings.DASHBOARD_PASSWORD || password === settings.DASHBOARD_PASSWORD) {
-        return res.json({ success: true, token: settings.DASHBOARD_PASSWORD || 'unprotected' });
-      }
-      return res.status(401).json({ success: false, error: 'Ungültiges Passwort' });
-    });
-
-    this.app.use(express.json());
-    const publicDir = path.join(__dirname, 'public');
-    this.app.use(express.static(publicDir));
-    const texturesDir = path.resolve(__dirname, '../../node_modules/prismarine-viewer/public/textures');
-    this.app.use('/textures', express.static(texturesDir));
-
-    this.app.get('/api/inventory/textures', (req, res) => {
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.sendFile(path.join(__dirname, 'public/img/mc/item_textures.json'));
-    });
-
-    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
-
-    // Initialize backend services in background
-    this.ensureServices().catch(err => {
-      logger.warn(`[DashboardServer] Service-Initialisierung im Hintergrund: ${err.message}`);
-    });
-
-    this.registerBaseRoutes();
-    this.registerSchematicRoutes(upload);
-    this.registerModelApiRoutes();
-
-    return this.app;
+    return setupExpressApp(this);
   }
 
   registerBaseRoutes() {
@@ -263,6 +106,10 @@ export class DashboardServer {
 
   registerSchematicRoutes(upload) {
     registerSchematicRoutes(this.app, upload, this);
+  }
+
+  registerCadStudioRoutes() {
+    registerCadStudioRoutes(this.app, this);
   }
 
   registerModelApiRoutes() {
@@ -301,9 +148,15 @@ export class DashboardServer {
       logger.debug('Neuer Mission-Control Dashboard Client verbunden.');
 
       // 1. Initialen Status und Historie senden
+      const activeState = (this.botClient && this.botClient.state === 'FABRIC_MISMATCH')
+        ? 'FABRIC_MISMATCH'
+        : (this.botClient?.state || sessionHandoff.state);
+
       ws.send(JSON.stringify({
         type: 'status',
-        state: sessionHandoff.state,
+        state: activeState,
+        botConnected: !!(this.currentBot && this.currentBot.entity),
+        botRunning: this.botClient ? this.botClient.shouldRun : false,
         viewerPort: settings.PRISMARINE_VIEWER_PORT,
         mode: settings.BUILD_EXECUTION_MODE,
         effectiveMode: worldExecutor.resolveMode(settings.BUILD_EXECUTION_MODE, this.currentBot),
@@ -313,7 +166,14 @@ export class DashboardServer {
         username: this.currentBot?.username || settings.MC_USERNAME || ''
       }));
 
-      // Initialen Gamemode-Status an neu verbundenen Client senden
+      if (this.botClient?.lastKickClassification) {
+        ws.send(JSON.stringify({
+          type: 'bot_kick_diagnostic',
+          classification: this.botClient.lastKickClassification,
+          reason: this.botClient.lastKickReason || ''
+        }));
+      }
+
       ws.send(JSON.stringify({
         type: 'manual_control_state',
         active: manualController.isActive(),
@@ -327,7 +187,6 @@ export class DashboardServer {
         }));
       }
 
-      // Aktive MSA-Sitzung falls vorhanden
       const activeMsa = msaAuthManager.getActiveSession();
       if (activeMsa && activeMsa.status === 'pending') {
         ws.send(JSON.stringify({
@@ -341,12 +200,10 @@ export class DashboardServer {
         }));
       }
 
-      // 2. Letzte Voxel-Vorschau senden
       if (this.lastVoxelPreview) {
         ws.send(JSON.stringify(this.lastVoxelPreview));
       }
 
-      // 3. Karten-Daten generieren und senden
       const mapData = this.generateAreaMapData();
       ws.send(JSON.stringify({
         type: 'area_map_data',
@@ -354,7 +211,21 @@ export class DashboardServer {
         center: mapData.center
       }));
 
-      // Disconnection & Error Safety: Releasing manual controls on disconnect
+      ws.send(JSON.stringify({
+        type: 'viewer_state_changed',
+        enabled: Boolean(settings.ENABLE_PRISMARINE_VIEWER),
+        running: Boolean(this.viewerRunning),
+        port: settings.PRISMARINE_VIEWER_PORT
+      }));
+
+      const lanWorlds = lanDiscoveryService.getDiscoveredWorlds();
+      if (lanWorlds.length > 0) {
+        ws.send(JSON.stringify({
+          type: 'lan_worlds_updated',
+          worlds: lanWorlds
+        }));
+      }
+
       const handleDisconnect = () => {
         if (this.operatorSocket === ws || (!this.operatorSocket && manualController.isActive())) {
           logger.warn('[ManualControl] Operator-Verbindung getrennt/geschlossen. Deaktiviere Gamemode & Standby Handoff...');
@@ -374,7 +245,6 @@ export class DashboardServer {
         handleDisconnect();
       });
 
-      // Nachrichten vom Dashboard-Client verarbeiten
       ws.on('message', (message) => {
         try {
           const data = JSON.parse(message.toString());
@@ -385,10 +255,20 @@ export class DashboardServer {
       });
     });
 
-    // 500ms Telemetrie-Loop
     this.telemetryInterval = setInterval(() => {
       this.sendTelemetry();
     }, 500);
+
+    lanDiscoveryService.start();
+    if (!this._lanUpdateHandler) {
+      this._lanUpdateHandler = (worlds) => {
+        this.broadcast({
+          type: 'lan_worlds_updated',
+          worlds
+        });
+      };
+      lanDiscoveryService.on('worlds_updated', this._lanUpdateHandler);
+    }
 
     const port = portOverride !== undefined ? portOverride : (this.port !== null && this.port !== undefined ? this.port : (settings.WEB_DASHBOARD_PORT || 3080));
     return new Promise((resolve, reject) => {
@@ -407,6 +287,11 @@ export class DashboardServer {
   stop() {
     this.isRunning = false;
     this.operatorSocket = null;
+    if (this._lanUpdateHandler) {
+      lanDiscoveryService.removeListener('worlds_updated', this._lanUpdateHandler);
+      this._lanUpdateHandler = null;
+    }
+    lanDiscoveryService.stop();
     if (this.telemetryInterval) {
       clearInterval(this.telemetryInterval);
       this.telemetryInterval = null;
@@ -419,15 +304,7 @@ export class DashboardServer {
       this.httpServer.close();
       this.httpServer = null;
     }
-    if (this.activeViewer && typeof this.activeViewer.close === 'function') {
-      try {
-        this.activeViewer.close();
-      } catch {
-        // Ignorieren
-      }
-      this.activeViewer = null;
-      this.viewerRunning = false;
-    }
+    this.stopViewer(false);
     if (this.deviceFlowManager && typeof this.deviceFlowManager.destroy === 'function') {
       this.deviceFlowManager.destroy();
     }
@@ -435,17 +312,22 @@ export class DashboardServer {
   }
 
   onBotSpawn(bot) {
-    if (this.currentBot && this.currentBot !== bot && this.currentBot.viewer?.close) {
-      try {
-        this.currentBot.viewer.close();
-      } catch {
-        // Ignorieren
-      }
+    if (this.currentBot && this.currentBot !== bot) {
+      this.stopViewer(false);
     }
     this.currentBot = bot;
-    this.startViewer(bot);
+    if (settings.ENABLE_PRISMARINE_VIEWER !== false) {
+      this.startViewer(bot);
+    } else {
+      logger.info('[Prismarine-Viewer] Viewer ist in den Einstellungen deaktiviert (Ressourcenschonender Modus).');
+      this.broadcast({
+        type: 'viewer_state_changed',
+        enabled: false,
+        running: false,
+        port: settings.PRISMARINE_VIEWER_PORT
+      });
+    }
 
-    // Reaktive Event-Trigger für verzögerungsfreie HUD & Inventar-Synchronisation
     try {
       if (bot.inventory && typeof bot.inventory.on === 'function') {
         bot.inventory.on('updateSlot', () => this.sendTelemetry());
@@ -455,9 +337,22 @@ export class DashboardServer {
       bot.on('health', () => this.sendTelemetry());
       bot.on('death', () => this.sendTelemetry());
       bot.on('respawn', () => this.sendTelemetry());
+      bot.on('playerJoined', () => this.sendTelemetry());
+      bot.on('playerLeft', () => this.sendTelemetry());
+      bot.on('playerUpdated', () => this.sendTelemetry());
+      bot.on('end', () => {
+        this.stopViewer();
+        this.sendTelemetry();
+      });
+      bot.on('kicked', () => {
+        this.stopViewer();
+        this.sendTelemetry();
+      });
+      if (bot._client && typeof bot._client.on === 'function') {
+        bot._client.on('playerlist_header', () => this.sendTelemetry());
+      }
     } catch {}
 
-    // Initiales Karten-Raster broadcasten
     setTimeout(() => {
       const mapData = this.generateAreaMapData();
       this.broadcast({
@@ -468,65 +363,16 @@ export class DashboardServer {
     }, 1500);
   }
 
-  stopViewer() {
-    if (this.activeViewer?.close) {
-      try {
-        this.activeViewer.close();
-      } catch {}
-    } else if (this.currentBot?.viewer?.close) {
-      try {
-        this.currentBot.viewer.close();
-      } catch {}
-    }
-    this.activeViewer = null;
-    this.viewerRunning = false;
+  stopViewer(notifyClients = true) {
+    return stopViewer(this, notifyClients);
   }
 
-  startViewer(bot) {
-    if (this.viewerRunning || this.activeViewer) {
-      this.stopViewer();
-    }
+  setViewerEnabled(enabled) {
+    return setViewerEnabled(this, enabled);
+  }
 
-    try {
-      const viewerFn = prismarineViewer.mineflayer || (prismarineViewer.default && prismarineViewer.default.mineflayer);
-      if (viewerFn) {
-        // 1. Version Compatibility & State-ID Translation for Web Client
-        // Binds ViewerStateTranslator to translate chunk palettes and block updates
-        // between bot version (e.g. 26.3 / 1.20.4) and target viewer assets (1.21.4 / 1.20.1).
-        const targetViewerVersion = VersionResolver.resolveViewerVersion(bot.version);
-        const translator = ViewerStateTranslator.create(bot.version, targetViewerVersion);
-        const viewerBot = translator.createViewerBotProxy(bot, sanitizeViewerEntity);
-        logger.info(`[Prismarine-Viewer] State-Translator aktiv: Bot-Version '${bot.version}' -> Viewer-Assets '${targetViewerVersion}'`);
-
-        // 2. http.createServer abfangen, um unhandled EADDRINUSE Exceptions zu verhindern
-        const origCreateServer = http.createServer;
-        http.createServer = function(...args) {
-          const srv = origCreateServer.apply(this, args);
-          srv.on('error', (err) => {
-            if (err.code === 'EADDRINUSE') {
-              logger.warn(`[Prismarine-Viewer] Port ${settings.PRISMARINE_VIEWER_PORT} belegt (EADDRINUSE). Stream wird fortgesetzt sobald Port frei ist.`);
-            } else {
-              logger.warn(`[Prismarine-Viewer] Serverfehler: ${err.message}`);
-            }
-          });
-          return srv;
-        };
-
-        try {
-          viewerFn(viewerBot, {
-            port: settings.PRISMARINE_VIEWER_PORT,
-            firstPerson: true
-          });
-          this.activeViewer = viewerBot.viewer || bot.viewer || null;
-          this.viewerRunning = true;
-          logger.info(`Prismarine-Viewer gestartet auf http://localhost:${settings.PRISMARINE_VIEWER_PORT}`);
-        } finally {
-          http.createServer = origCreateServer;
-        }
-      }
-    } catch (err) {
-      logger.warn(`Konnte Prismarine-Viewer nicht initialisieren: ${err.message}`);
-    }
+  startViewer(bot = this.currentBot) {
+    return startViewer(this, bot);
   }
 
   broadcast(obj) {

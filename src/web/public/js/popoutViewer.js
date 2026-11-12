@@ -50,14 +50,27 @@ if (popoutFrame) {
 // Notify cockpit that popout view is mounted
 broadcast({ type: 'VIEWER_POPOUT_OPENED', port: viewerPort });
 
-// Listen for re-embed or close requests from main cockpit
+// Listen for re-embed, close requests, and viewer stream toggle from main cockpit
+function handleViewerStateSync(data) {
+  if (!data) return;
+  if (data.type === 'REQUEST_REEMBED' || data.type === 'VIEWER_POPOUT_CLOSED') {
+    window.close();
+  } else if (data.type === 'VIEWER_STATE_CHANGED' && popoutFrame) {
+    if (data.enabled === false) {
+      popoutFrame.src = 'about:blank';
+    } else {
+      const port = data.port || viewerPort;
+      const streamUrl = `${window.location.protocol}//${window.location.hostname}:${port}`;
+      if (!popoutFrame.src || popoutFrame.src === 'about:blank') {
+        popoutFrame.src = streamUrl;
+      }
+    }
+  }
+}
+
 if (channel) {
   channel.onmessage = (event) => {
-    const data = event.data;
-    if (!data) return;
-    if (data.type === 'REQUEST_REEMBED' || data.type === 'VIEWER_POPOUT_CLOSED') {
-      window.close();
-    }
+    handleViewerStateSync(event.data);
   };
 }
 
@@ -65,9 +78,7 @@ window.addEventListener('storage', (event) => {
   if (event.key === STORAGE_KEY && event.newValue) {
     try {
       const data = JSON.parse(event.newValue);
-      if (data.type === 'REQUEST_REEMBED') {
-        window.close();
-      }
+      handleViewerStateSync(data);
     } catch {}
   }
 });

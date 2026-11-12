@@ -23,14 +23,30 @@ export class Endpoint {
     this.timeout = options.timeout || 30000;
     this.maxRetries = options.maxRetries ?? 0;
 
+    // Telemetrie & Kosten-Tracking
+    this.totalPromptTokens = 0;
+    this.totalCompletionTokens = 0;
+    this.totalCostUSD = 0;
+    this.costPer1MInput = options.costPer1MInput ?? 0;
+    this.costPer1MOutput = options.costPer1MOutput ?? 0;
+    this.isFreeTier = Boolean(options.isFreeTier);
+    this.capabilities = options.capabilities || { code: 70, reasoning: 70, speed: 70, json: 70 };
+    this.tierRecommendation = options.tierRecommendation || 'NANO_CHAT';
+    this.roles = Array.isArray(options.roles) ? options.roles : [];
+
     // Hinweis: Schlüssellose Gateways (Kilo AI, LLM7) verlangen einen nicht-leeren String für den OpenAI-SDK-Client
     // maxRetries: 0 verhindert SDK-interne Retries, sodass der LLMRouter sofort nach 30s zum nächsten Provider rotiert
     if (!options.deferClientCreation) {
+      const defaultHeaders = { ...(options.defaultHeaders || {}) };
+      if (this.isZeroKey || this.apiKey === 'none') {
+        defaultHeaders['Authorization'] = undefined;
+      }
       this.client = new OpenAI({
         apiKey: this.apiKey || 'dummy-key',
         baseURL: this.baseURL,
         timeout: this.timeout,
-        maxRetries: this.maxRetries
+        maxRetries: this.maxRetries,
+        defaultHeaders: Object.keys(defaultHeaders).length > 0 ? defaultHeaders : undefined
       });
     }
   }
@@ -54,6 +70,25 @@ export class Endpoint {
 
   recordSuccess() {
     this.requestsToday++;
+  }
+
+  recordUsage(usage = {}) {
+    this.requestsToday++;
+    const prompt = usage.promptTokens || usage.prompt_tokens || 0;
+    const completion = usage.completionTokens || usage.completion_tokens || 0;
+    this.totalPromptTokens += prompt;
+    this.totalCompletionTokens += completion;
+
+    const inputCost = (prompt / 1000000) * (this.costPer1MInput || 0);
+    const outputCost = (completion / 1000000) * (this.costPer1MOutput || 0);
+    const cost = this.isFreeTier ? 0 : (inputCost + outputCost);
+    this.totalCostUSD += cost;
+
+    return {
+      promptTokens: prompt,
+      completionTokens: completion,
+      costUSD: cost
+    };
   }
 }
 
@@ -81,7 +116,13 @@ export class DynamicEndpoint extends Endpoint {
       dailyRequestLimit: config.dailyRequestLimit || Infinity,
       timeout,
       maxRetries: config.maxRetries ?? 0,
-      deferClientCreation: true
+      deferClientCreation: true,
+      capabilities: config.capabilities,
+      isFreeTier: config.isFreeTier,
+      costPer1MInput: config.costPer1MInput,
+      costPer1MOutput: config.costPer1MOutput,
+      tierRecommendation: config.tierRecommendation,
+      roles: config.roles
     };
 
     super(provider, apiKey, baseURL, model, tier, options);
@@ -99,12 +140,20 @@ export class DynamicEndpoint extends Endpoint {
     this.customHeaders = config.customHeaders || {};
     this.timeout = timeout;
     this.maxRetries = options.maxRetries ?? 0;
+    this.capabilities = config.capabilities || this.capabilities;
+    this.isFreeTier = config.isFreeTier !== undefined ? Boolean(config.isFreeTier) : this.isFreeTier;
+    this.costPer1MInput = config.costPer1MInput ?? this.costPer1MInput;
+    this.costPer1MOutput = config.costPer1MOutput ?? this.costPer1MOutput;
+    this.tierRecommendation = config.tierRecommendation || this.tierRecommendation;
+    this.roles = Array.isArray(config.roles) ? config.roles : (this.roles || []);
 
     const defaultHeaders = { ...this.customHeaders };
     if (this.authType === 'bearer_token' || this.authType === 'oauth_device_flow' || this.authType === 'oauth_pkce') {
       if (this.apiKey && this.apiKey !== 'dummy-key' && this.apiKey !== 'none') {
         defaultHeaders['Authorization'] = `Bearer ${this.apiKey}`;
       }
+    } else if (this.isZeroKey || this.authType === 'none' || this.apiKey === 'none') {
+      defaultHeaders['Authorization'] = undefined;
     }
 
     this.client = new OpenAI({

@@ -641,6 +641,22 @@ async function runAdversarialStressTests() {
   // =========================================================================
   console.log('\n--- Suite 6: SleepController Clean Disconnect ---');
 
+  // Test 6_toggle: Night disconnect toggle disabled -> Bot stays online
+  {
+    settings.SLEEP_DISCONNECT_ON_NO_BED = false;
+    const bot = new MockChallengerBot({
+      position: new Vec3(0, 64, 0),
+      timeOfDay: 15000,
+      blocks: {}
+    });
+    const sc = new SleepController({ bot, reconnect: () => {} });
+    await sc.handleSleepOpportunity();
+    assert.strictEqual(sc.state, SLEEP_STATES.AWAKE, 'Bot stays AWAKE when toggle is false');
+    assert.strictEqual(bot.connected, true, 'Bot remains connected');
+    pass('Dashboard Toggle Aus: Bot trennt sich bei Nacht nicht, wenn SLEEP_DISCONNECT_ON_NO_BED=false');
+    settings.SLEEP_DISCONNECT_ON_NO_BED = true;
+  }
+
   // Test 6a: Night time with NO beds in world -> bot.quit('Night skip disconnect') + chat announcement
   {
     const bot = new MockChallengerBot({
@@ -991,6 +1007,7 @@ async function runAdversarialStressTests() {
 
     sc.stopMonitoring();
     worldExecutor.isBuilding = false;
+    settings.SLEEP_DISCONNECT_ON_NO_BED = false;
     pass('Chat-Trigger ("ging zu Bett"): Führt sauberen Disconnect aus und pausiert aktiven Bauauftrag');
   }
 
